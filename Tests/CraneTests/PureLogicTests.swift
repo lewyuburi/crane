@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Crane
+@testable import CraneKit
 
 /// Tests for pure, extracted business logic (test-first). These functions were pulled out of
 /// file/Process/UI boundaries specifically so they can be unit-tested.

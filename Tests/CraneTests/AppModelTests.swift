@@ -1,6 +1,7 @@
 import Testing
 import Foundation
-@testable import Crane
+@testable import CraneKit
+@testable import CraneApp
 
 /// An in-memory ContainerControlling that records calls, so AppModel's orchestration can be
 /// tested without shelling out to the real `container` binary.

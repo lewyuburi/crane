@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Crane
+@testable import CraneKit
 
 /// Fixtures captured from a real `container` 1.0.0 apiserver.
 struct ContainerDecodingTests {

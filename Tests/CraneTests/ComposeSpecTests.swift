@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Crane
+@testable import CraneKit
 
 /// Conformance tests for Crane's Compose parser. Inputs and expectations are derived from the
 /// upstream Compose loader tests in compose-spec/compose-go (Apache-2.0) — e.g.
