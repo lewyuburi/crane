@@ -1,5 +1,5 @@
 import Testing
-@testable import Crane
+@testable import CraneKit
 
 struct RunSpecTests {
     @Test func minimalSpecIsJustImage() {

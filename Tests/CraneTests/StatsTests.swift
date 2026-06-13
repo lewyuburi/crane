@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Crane
+@testable import CraneKit
 
 struct StatsTests {
     // Real `container stats --no-stream --format json crane-test` output.
