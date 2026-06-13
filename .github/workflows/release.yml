@@ -28,28 +28,35 @@ jobs:
       # (CERT_P12_BASE64, CERT_PASSWORD, NOTARY_APPLE_ID, NOTARY_TEAM_ID, NOTARY_PASSWORD).
       # Without notarization the cask installs, but first launch needs right-click → Open.
 
-      - name: Build DMG
+      - name: Package (.dmg + .zip, arm64)
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # .zip (for auto-updaters / scripted installs)
+          ditto -c -k --keepParent build/Crane.app "Crane-${VERSION}-arm64.zip"
+          # .dmg (drag-to-Applications, for manual downloads)
           mkdir -p dmg
           cp -R build/Crane.app dmg/
-          ln -s /Applications dmg/Applications            # drag-to-install target
-          hdiutil create -volname "Crane" -srcfolder dmg -ov -format UDZO Crane.dmg
-          echo "SHA256=$(shasum -a 256 Crane.dmg | awk '{print $1}')" >> "$GITHUB_ENV"
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "Crane" -srcfolder dmg -ov -format UDZO "Crane-${VERSION}-arm64.dmg"
+          echo "DMG_SHA=$(shasum -a 256 "Crane-${VERSION}-arm64.dmg" | awk '{print $1}')" >> "$GITHUB_ENV"
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: Crane.dmg
+          files: |
+            Crane-*-arm64.dmg
+            Crane-*-arm64.zip
           body: |
             ## Crane ${{ github.ref_name }}
 
-            Native macOS app for Apple's `container` tool.
+            Native macOS app for Apple's `container` tool. **Apple Silicon only** — Apple's
+            containerization runs only on arm64 Macs.
 
             **Install via Homebrew:**
             ```
             brew install --cask lewyuburi/tap/crane
             ```
 
-            Or download `Crane.dmg` below and drag Crane to Applications.
+            Or download the `.dmg` below and drag Crane to Applications.
 
-            DMG SHA-256 (for the cask): `${{ env.SHA256 }}`
+            DMG SHA-256 (for the cask): `${{ env.DMG_SHA }}`
