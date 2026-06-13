@@ -13,7 +13,7 @@ swift build -c release
 echo "▸ Assembling $APP …"
 rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
-cp ".build/release/Crane" "$CONTENTS/MacOS/Crane"
+cp ".build/release/CraneApp" "$CONTENTS/MacOS/Crane"
 
 echo "▸ Bundling app templates…"
 cp -R "templates" "$CONTENTS/Resources/templates"

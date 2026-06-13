@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Crane
+@testable import CraneKit
 
 struct VolumeNetworkTests {
     static let volumeJSON = """

@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Crane
+@testable import CraneKit
 
 /// The Compose engine is UI-agnostic, so these tests run with no @MainActor and no SwiftUI —
 /// the same way a future docker-compose-compatible CLI would drive it.
