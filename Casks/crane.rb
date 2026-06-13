@@ -10,6 +10,7 @@ cask "crane" do
   homepage "https://github.com/lewyuburi/crane"
 
   depends_on macos: :tahoe # macOS 26+
+  depends_on arch: :arm64  # Apple container is Apple Silicon only
 
   app "Crane.app"
 
