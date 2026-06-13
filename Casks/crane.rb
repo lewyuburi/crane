@@ -9,7 +9,7 @@ cask "crane" do
   desc "Native macOS GUI for Apple's container tool"
   homepage "https://github.com/lewyuburi/crane"
 
-  depends_on macos: ">= :tahoe" # macOS 26
+  depends_on macos: :tahoe # macOS 26+
 
   app "Crane.app"
 
