@@ -72,25 +72,3 @@ struct Down: AsyncParsableCommand {
     }
 }
 
-// MARK: - Compose loading
-
-enum ComposeLoader {
-    static func load(_ path: String) throws -> ComposeProject {
-        let fm = FileManager.default
-        var dir = URL(fileURLWithPath: path)
-        var file = dir
-        var isDir: ObjCBool = false
-        fm.fileExists(atPath: path, isDirectory: &isDir)
-        if isDir.boolValue {
-            let candidates = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"]
-            guard let found = candidates.map({ dir.appendingPathComponent($0) }).first(where: { fm.fileExists(atPath: $0.path) }) else {
-                throw ValidationError("No compose file found in \(path)")
-            }
-            file = found
-        } else {
-            dir = dir.deletingLastPathComponent()
-        }
-        let yaml = try String(contentsOf: file, encoding: .utf8)
-        return try ComposeParsing.parse(yaml: yaml, baseDir: file.deletingLastPathComponent())
-    }
-}
