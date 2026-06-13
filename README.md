@@ -4,6 +4,12 @@ A native macOS app for managing [Apple's `container`](https://github.com/apple/c
 
 > ⚠️ **Early / experimental.** Crane drives Apple's young `container` runtime; some features (notably multi-service stacks) depend on runtime capabilities that are still maturing — see [Limitations](#limitations).
 
+## Screenshots
+
+| Containers | App gallery |
+|---|---|
+| ![Containers](docs/containers.png) | ![App gallery](docs/gallery.png) |
+
 ## Features
 
 - **Containers** — start / stop / delete, live logs, an embedded shell (PTY), and live CPU/memory/network stats.
