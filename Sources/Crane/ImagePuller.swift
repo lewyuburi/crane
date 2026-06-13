@@ -13,6 +13,7 @@ final class ImagePuller {
     var errorMessage: String?
 
     private var process: Process?
+    private var readHandle: FileHandle?
 
     func pull(reference: String) {
         guard process == nil, !reference.isEmpty else { return }
@@ -25,6 +26,8 @@ final class ImagePuller {
     }
 
     func cancel() {
+        readHandle?.readabilityHandler = nil   // or the pipe keeps firing after we drop the process
+        readHandle = nil
         process?.terminate()
         process = nil
         isPulling = false
@@ -38,7 +41,9 @@ final class ImagePuller {
             proc.standardError = pipe
             self.process = proc
 
-            pipe.fileHandleForReading.readabilityHandler = { [weak self] fh in
+            let handle = pipe.fileHandleForReading
+            self.readHandle = handle
+            handle.readabilityHandler = { [weak self] fh in
                 let data = fh.availableData
                 guard !data.isEmpty else { fh.readabilityHandler = nil; return }
                 let chunk = String(decoding: data, as: UTF8.self)
@@ -49,7 +54,8 @@ final class ImagePuller {
                 proc.terminationHandler = { _ in cont.resume() }
                 do { try proc.run() } catch { proc.terminationHandler = nil; cont.resume(throwing: error) }
             }
-            pipe.fileHandleForReading.readabilityHandler = nil
+            handle.readabilityHandler = nil
+            readHandle = nil
 
             if proc.terminationStatus == 0 {
                 fraction = 1

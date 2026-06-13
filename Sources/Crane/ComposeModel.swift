@@ -8,6 +8,23 @@ struct ComposeBuild: Hashable {
     var args: [String] = []    // "KEY=VALUE" build args
 }
 
+/// A long-form `depends_on` entry: the condition to wait for and whether it's required.
+struct ServiceDependency: Hashable {
+    var condition: String   // service_started | service_healthy | service_completed_successfully
+    var required: Bool
+}
+
+/// A service's `healthcheck:` (Compose spec). `test` is normalized so a bare string becomes
+/// `["CMD-SHELL", <string>]`, matching how Compose interprets the short form.
+struct Healthcheck: Hashable {
+    var test: [String] = []
+    var interval: String?
+    var timeout: String?
+    var retries: Int?
+    var startPeriod: String?
+    var disable: Bool = false
+}
+
 /// A persisted reference to a compose file the user added to the sidebar.
 struct ComposeProjectRef: Identifiable, Hashable, Codable {
     var id: String { path }
@@ -24,6 +41,11 @@ struct ComposeProject {
     var namedVolumes: [String]
     /// Directory of the compose file, for resolving relative bind-mount paths.
     var baseDir: URL
+
+    /// A multi-service project. These run in "stack mode" (default network + service-name
+    /// container names) so containers can resolve each other by name via Apple's internal DNS.
+    /// EXPERIMENTAL: that DNS is flaky and default-network-only on `container` 1.0.x.
+    var isStack: Bool { services.count > 1 }
 
     /// Services ordered so dependencies come before dependents (topological).
     var startupOrder: [ComposeService] {
@@ -53,11 +75,16 @@ struct ComposeService: Identifiable, Hashable {
     var environment: [String] = []  // "KEY=VALUE"
     var volumes: [String] = []      // "source:target[:ro]" (host paths absolute)
     var dependsOn: [String] = []
+    var dependencies: [String: ServiceDependency] = [:]  // long-form depends_on details
     var dns: [String] = []          // nameserver IPs
+    var healthcheck: Healthcheck?
+    var restart: String?            // "no" | "always" | "unless-stopped" | "on-failure"
     var memory: String?             // container memory limit, e.g. "4G"
     var cpus: String?               // number of CPUs
 
-    /// The container name Crane uses for this service in a project.
+    /// The container name Crane uses for this service: `{project}-{service}`. This is also its
+    /// internal DNS name in stack mode, so siblings reach it as `${PROJECT}-{service}` — unique
+    /// per project (no collisions between stacks that share a service name like `db`).
     func containerName(project: String) -> String { "\(project)-\(name)" }
 
     /// The image to run: a built tag when the service builds, else the declared image.
@@ -76,8 +103,12 @@ struct ComposeService: Identifiable, Hashable {
 
     /// Arguments after `container run` to start this service. The compose labels let
     /// Crane group these containers by project in the Containers list (OrbStack-style).
-    func runArguments(project: String) -> [String] {
-        var args = ["--detach", "--name", containerName(project: project), "--network", project,
+    func runArguments(project: String, stack: Bool = false) -> [String] {
+        // Stacks run on the default network — the only one where Apple's internal DNS resolves
+        // container names. Non-stack services keep their isolated per-project network.
+        let network = stack ? "default" : project
+        var args = ["--detach", "--name", containerName(project: project),
+                    "--network", network,
                     "--label", "com.docker.compose.project=\(project)",
                     "--label", "com.docker.compose.service=\(name)"]
         for p in ports { args += ["--publish", p] }
@@ -151,6 +182,9 @@ enum ComposeParsing {
         s.environment = envMap.keys.sorted().map { "\($0)=\(envMap[$0]!)" }
         s.volumes = volumes(dict["volumes"], baseDir: baseDir).map { interpolate($0, vars) }
         s.dependsOn = dependsOn(dict["depends_on"])
+        s.dependencies = dependencies(dict["depends_on"])
+        s.healthcheck = healthcheck(dict["healthcheck"])
+        s.restart = (dict["restart"] as? String).map { interpolate($0, vars) }
         s.dns = stringList(dict["dns"]).map { interpolate($0, vars) }
         // Resource limits: short form (mem_limit/cpus) or Compose-spec deploy.resources.limits.
         let limits = ((dict["deploy"] as? [String: Any])?["resources"] as? [String: Any])?["limits"] as? [String: Any]
@@ -325,13 +359,31 @@ enum ComposeParsing {
         return []
     }
 
-    /// Project/network names must be lowercase alphanumeric + dashes.
-    private static func sanitize(_ name: String) -> String {
-        let lowered = name.lowercased()
-        let cleaned = lowered.map { ch -> Character in
-            ch.isLetter || ch.isNumber ? ch : "-"
+    /// Long-form `depends_on: { svc: { condition, required } }`. `required` defaults to true.
+    private static func dependencies(_ value: Any?) -> [String: ServiceDependency] {
+        guard let map = value as? [String: Any] else { return [:] }
+        return map.reduce(into: [:]) { result, entry in
+            if let cfg = entry.value as? [String: Any], let condition = cfg["condition"] as? String {
+                result[entry.key] = ServiceDependency(condition: condition,
+                                                      required: (cfg["required"] as? Bool) ?? true)
+            }
         }
-        let collapsed = String(cleaned).replacingOccurrences(of: "-+", with: "-", options: .regularExpression)
-        return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }
+
+    /// `healthcheck:` — `test` may be a bare string (wrapped as CMD-SHELL) or a list.
+    private static func healthcheck(_ value: Any?) -> Healthcheck? {
+        guard let d = value as? [String: Any] else { return nil }
+        var hc = Healthcheck()
+        hc.disable = (d["disable"] as? Bool) ?? false
+        if let s = d["test"] as? String { hc.test = ["CMD-SHELL", s] }
+        else if let arr = d["test"] as? [Any] { hc.test = arr.compactMap { $0 as? String } }
+        hc.interval = d["interval"] as? String
+        hc.timeout = d["timeout"] as? String
+        hc.retries = (d["retries"] as? NSNumber)?.intValue
+        hc.startPeriod = d["start_period"] as? String
+        return hc
+    }
+
+    /// Project/network names must be lowercase alphanumeric + dashes.
+    private static func sanitize(_ name: String) -> String { ProjectName.sanitize(name) }
 }

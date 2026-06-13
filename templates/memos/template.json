@@ -1,0 +1,3 @@
+{ "id":"memos","name":"Memos","tagline":"A lightweight, self-hosted note-taking and memo hub.",
+  "category":"Apps","logo":"memos","links":{"website":"https://usememos.com"},"tags":["notes","productivity"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"5230"}] }

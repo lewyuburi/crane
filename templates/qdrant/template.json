@@ -1,0 +1,8 @@
+{
+  "id": "qdrant", "name": "Qdrant",
+  "tagline": "High-performance vector database for AI applications.",
+  "category": "Databases", "logo": "qdrant",
+  "links": { "website": "https://qdrant.tech", "docs": "https://qdrant.tech/documentation/" },
+  "tags": ["vector", "database", "ai"], "primaryPort": "PORT",
+  "variables": [ { "key": "PORT", "label": "Host port", "default": "6333" } ]
+}

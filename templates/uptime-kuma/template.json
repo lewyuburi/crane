@@ -1,0 +1,8 @@
+{
+  "id": "uptime-kuma", "name": "Uptime Kuma",
+  "tagline": "Self-hosted monitoring tool, an Uptime Robot alternative.",
+  "category": "Monitoring", "logo": "uptime-kuma",
+  "links": { "github": "https://github.com/louislam/uptime-kuma" },
+  "tags": ["monitoring", "status"], "primaryPort": "PORT",
+  "variables": [ { "key": "PORT", "label": "Host port", "default": "3001" } ]
+}

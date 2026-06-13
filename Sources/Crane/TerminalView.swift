@@ -1,8 +1,7 @@
 import SwiftUI
 import SwiftTerm
 
-/// A live PTY terminal for any `container` invocation (exec into a container,
-/// or a shell into a machine).
+/// A live PTY terminal for a `container exec` invocation (a shell into a container).
 struct PTYTerminalView: NSViewRepresentable {
     let makeInvocation: () async throws -> ContainerCLI.ExecInvocation
     @Environment(\.colorScheme) private var colorScheme

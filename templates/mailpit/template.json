@@ -1,0 +1,11 @@
+{
+  "id": "mailpit", "name": "Mailpit",
+  "tagline": "Email testing tool with a web UI and SMTP server.",
+  "category": "Tools", "logo": "mailpit",
+  "links": { "website": "https://mailpit.axllent.org" },
+  "tags": ["email", "smtp", "dev"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "PORT", "label": "Web UI port", "default": "8025" },
+    { "key": "SMTP_PORT", "label": "SMTP port", "default": "1025" }
+  ]
+}

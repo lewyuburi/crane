@@ -2,15 +2,10 @@ import Testing
 import Foundation
 @testable import Crane
 
-struct StatsMachineTests {
+struct StatsTests {
     // Real `container stats --no-stream --format json crane-test` output.
     static let statsJSON = """
     [{"blockReadBytes":1744896,"blockWriteBytes":0,"cpuUsageUsec":3785,"id":"crane-test","memoryLimitBytes":1073741824,"memoryUsageBytes":2007040,"networkRxBytes":11953,"networkTxBytes":602,"numProcesses":1}]
-    """
-
-    // Real `container machine list --format json` output.
-    static let machineJSON = """
-    [{"createdDate":"2026-06-12T18:06:31Z","memory":8589934592,"ipAddress":"192.168.64.3","default":true,"cpus":4,"diskSize":78647296,"status":"running","id":"crane-mac"}]
     """
 
     @Test func decodesStats() throws {
@@ -23,19 +18,17 @@ struct StatsMachineTests {
         #expect(abs(stats.memoryFraction - 0.00187) < 0.001)
     }
 
-    @Test func decodesMachine() throws {
-        let machine = try #require(MachineDecoding.decode(from: Data(Self.machineJSON.utf8)).first)
-        #expect(machine.id == "crane-mac")
-        #expect(machine.status == "running")
-        #expect(machine.isRunning)
-        #expect(machine.ipAddress == "192.168.64.3")
-        #expect(machine.cpus == 4)
-        #expect(machine.memoryBytes == 8589934592)
-        #expect(machine.isDefault)
+    @Test func memoryFractionGuardsZeroLimit() {
+        // A zero memory limit must not divide-by-zero — it reports 0.
+        let json = """
+        [{"id":"x","memoryUsageBytes":1000,"memoryLimitBytes":0,"cpuUsageUsec":0,"numProcesses":1,"blockReadBytes":0,"blockWriteBytes":0,"networkRxBytes":0,"networkTxBytes":0}]
+        """
+        let s = StatsDecoding.decode(from: Data(json.utf8)).first
+        #expect(s?.memoryFraction == 0)
     }
 
     @Test func emptyDecodesEmpty() {
         #expect(StatsDecoding.decode(from: Data("[]".utf8)).isEmpty)
-        #expect(MachineDecoding.decode(from: Data()).isEmpty)
+        #expect(StatsDecoding.decode(from: Data()).isEmpty)
     }
 }

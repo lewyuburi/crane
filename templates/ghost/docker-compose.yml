@@ -1,0 +1,13 @@
+services:
+  ghost:
+    image: ghost:5
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      url: http://localhost:${PORT}
+    ports:
+      - "${PORT}:2368"
+    volumes:
+      - ghostdata:/var/lib/ghost/content
+volumes:
+  ghostdata:

@@ -1,0 +1,12 @@
+services:
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    ports:
+      - "${PORT}:3000"
+    volumes:
+      - grafanadata:/var/lib/grafana
+volumes:
+  grafanadata:

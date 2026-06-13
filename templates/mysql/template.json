@@ -1,0 +1,12 @@
+{
+  "id": "mysql", "name": "MySQL",
+  "tagline": "Popular open-source relational database.",
+  "category": "Databases", "logo": "mysql",
+  "links": { "website": "https://www.mysql.com", "docs": "https://dev.mysql.com/doc/" },
+  "tags": ["database", "sql"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "MYSQL_ROOT_PASSWORD", "label": "Root password", "generate": "password:24", "secret": true },
+    { "key": "MYSQL_DATABASE", "label": "Database", "default": "app" },
+    { "key": "PORT", "label": "Host port", "default": "3306" }
+  ]
+}

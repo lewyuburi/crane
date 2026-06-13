@@ -107,6 +107,27 @@ struct ComposeTests {
         #expect(b.build?.args == ["VERSION=2"])
     }
 
+    @Test func stackModeUsesDefaultNetworkAndServiceName() throws {
+        let yaml = """
+        services:
+          app:
+            image: myapp:latest
+            ports: ["3000:3000"]
+          db:
+            image: postgres:16
+        """
+        let p = try ComposeParsing.parse(yaml: yaml, baseDir: URL(fileURLWithPath: "/proj"), projectNameOverride: "stk")
+        #expect(p.isStack) // 2 services
+        let app = try #require(p.services.first { $0.name == "app" })
+        let args = app.runArguments(project: "stk", stack: true)
+        // composite container name (collision-free) + default network so DNS resolves it
+        let nameIdx = args.firstIndex(of: "--name")!
+        #expect(args[nameIdx + 1] == "stk-app")
+        let netIdx = args.firstIndex(of: "--network")!
+        #expect(args[netIdx + 1] == "default")
+        #expect(args.contains("com.docker.compose.project=stk"))
+    }
+
     @Test func runArgumentsForWeb() throws {
         let web = try #require(try project().services.first { $0.name == "web" })
         #expect(web.runArguments(project: "myapp") == [

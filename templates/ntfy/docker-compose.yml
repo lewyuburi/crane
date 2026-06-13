@@ -1,0 +1,16 @@
+services:
+  ntfy:
+    image: binwiederhier/ntfy:latest
+    restart: unless-stopped
+    command: ["serve"]
+    environment:
+      NTFY_BASE_URL: http://localhost:${PORT}
+      NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+    ports:
+      - "${PORT}:80"
+    volumes:
+      - ntfy-cache:/var/cache/ntfy
+      - ntfy-etc:/etc/ntfy
+volumes:
+  ntfy-cache:
+  ntfy-etc:

@@ -1,0 +1,3 @@
+{ "id":"vikunja","name":"Vikunja","tagline":"The open-source, self-hostable to-do app to organize your life.",
+  "category":"Apps","logo":"vikunja","links":{"website":"https://vikunja.io"},"tags":["productivity","todo","tasks"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"3456"}] }

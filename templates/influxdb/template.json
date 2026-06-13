@@ -1,0 +1,14 @@
+{
+  "id": "influxdb", "name": "InfluxDB",
+  "tagline": "Open-source time series database.",
+  "category": "Databases", "logo": "influxdb",
+  "links": { "website": "https://www.influxdata.com", "docs": "https://docs.influxdata.com" },
+  "tags": ["database", "timeseries", "metrics"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "INFLUX_USER", "label": "Admin user", "default": "admin" },
+    { "key": "INFLUX_PASSWORD", "label": "Admin password", "generate": "password:16", "secret": true },
+    { "key": "INFLUX_ORG", "label": "Organization", "default": "myorg" },
+    { "key": "INFLUX_BUCKET", "label": "Bucket", "default": "mybucket" },
+    { "key": "PORT", "label": "Host port", "default": "8086" }
+  ]
+}

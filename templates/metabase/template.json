@@ -1,0 +1,8 @@
+{
+  "id": "metabase", "name": "Metabase",
+  "tagline": "Open-source business intelligence and dashboards.",
+  "category": "Monitoring", "logo": "metabase",
+  "links": { "website": "https://www.metabase.com", "docs": "https://www.metabase.com/docs/" },
+  "tags": ["bi", "dashboards", "analytics"], "primaryPort": "PORT",
+  "variables": [ { "key": "PORT", "label": "Host port", "default": "3030" } ]
+}

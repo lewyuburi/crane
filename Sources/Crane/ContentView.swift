@@ -120,16 +120,3 @@ struct ContentView: View {
         }
     }
 }
-
-struct ComingSoonView: View {
-    let title: String
-    var body: some View {
-        ContentUnavailableView(
-            "\(title) coming soon",
-            systemImage: "hammer",
-            description: Text("This section isn't wired up yet.")
-        )
-        .navigationTitle(title)
-        .toolbarBackground(.hidden, for: .windowToolbar)
-    }
-}

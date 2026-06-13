@@ -1,0 +1,3 @@
+{ "id":"ntfy","name":"ntfy","tagline":"Send push notifications to your phone or desktop via simple HTTP.",
+  "category":"Apps","logo":"ntfy","links":{"website":"https://ntfy.sh"},"tags":["notifications","pub-sub"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"8070"}] }

@@ -1,0 +1,6 @@
+services:
+  excalidraw:
+    image: excalidraw/excalidraw:latest
+    restart: unless-stopped
+    ports:
+      - "${PORT}:80"

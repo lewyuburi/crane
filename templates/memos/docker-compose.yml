@@ -1,0 +1,10 @@
+services:
+  memos:
+    image: neosmemo/memos:stable
+    restart: unless-stopped
+    ports:
+      - "${PORT}:5230"
+    volumes:
+      - memos:/var/opt/memos
+volumes:
+  memos:

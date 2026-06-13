@@ -1,0 +1,8 @@
+{ "id":"directus","name":"Directus","tagline":"Open-source headless CMS and API for any SQL database.",
+  "category":"Apps","logo":"directus","links":{"website":"https://directus.io"},"tags":["cms","headless","api"],"primaryPort":"PORT",
+  "variables":[
+    {"key":"KEY","label":"App key","generate":"base64:24","secret":true},
+    {"key":"SECRET","label":"App secret","generate":"base64:32","secret":true},
+    {"key":"ADMIN_EMAIL","label":"Admin email","default":"admin@example.com"},
+    {"key":"ADMIN_PASSWORD","label":"Admin password","generate":"password:16","secret":true},
+    {"key":"PORT","label":"Host port","default":"8055"}] }

@@ -1,0 +1,14 @@
+services:
+  filebrowser:
+    image: hurlenko/filebrowser:latest
+    restart: unless-stopped
+    environment:
+      FB_BASEURL: /
+    ports:
+      - "${PORT}:8080"
+    volumes:
+      - filebrowser-data:/data
+      - filebrowser-config:/config
+volumes:
+  filebrowser-data:
+  filebrowser-config:

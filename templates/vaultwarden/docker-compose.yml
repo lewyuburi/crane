@@ -1,0 +1,12 @@
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    restart: unless-stopped
+    environment:
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+    ports:
+      - "${PORT}:80"
+    volumes:
+      - vaultwarden:/data
+volumes:
+  vaultwarden:

@@ -1,0 +1,3 @@
+{ "id":"it-tools","name":"IT-Tools","tagline":"A collection of handy online tools for developers.",
+  "category":"Tools","logo":"it-tools","links":{"github":"https://github.com/CorentinTh/it-tools"},"tags":["dev","tools","utilities"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"8082"}] }

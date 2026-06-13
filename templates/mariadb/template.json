@@ -1,0 +1,12 @@
+{
+  "id": "mariadb", "name": "MariaDB",
+  "tagline": "Community-developed fork of MySQL.",
+  "category": "Databases", "logo": "mariadb",
+  "links": { "website": "https://mariadb.org", "docs": "https://mariadb.com/kb/en/documentation/" },
+  "tags": ["database", "sql"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "MARIADB_ROOT_PASSWORD", "label": "Root password", "generate": "password:24", "secret": true },
+    { "key": "MARIADB_DATABASE", "label": "Database", "default": "app" },
+    { "key": "PORT", "label": "Host port", "default": "3306" }
+  ]
+}

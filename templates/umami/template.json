@@ -1,0 +1,12 @@
+{
+  "id": "umami", "name": "Umami",
+  "tagline": "Privacy-focused, open-source web analytics. A Google Analytics alternative.",
+  "category": "Apps", "logo": "umami",
+  "links": { "website": "https://umami.is", "docs": "https://umami.is/docs" },
+  "tags": ["analytics", "self-hosted", "stack"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "DB_PASSWORD", "label": "Database password", "generate": "password:24", "secret": true },
+    { "key": "APP_SECRET", "label": "App secret", "generate": "base64:32", "secret": true },
+    { "key": "PORT", "label": "Host port", "default": "3000" }
+  ]
+}

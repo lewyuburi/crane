@@ -1,0 +1,13 @@
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    environment:
+      N8N_SECURE_COOKIE: "false"
+      GENERIC_TIMEZONE: UTC
+    ports:
+      - "${PORT}:5678"
+    volumes:
+      - n8ndata:/home/node/.n8n
+volumes:
+  n8ndata:

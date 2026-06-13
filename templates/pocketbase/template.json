@@ -1,0 +1,6 @@
+{ "id":"pocketbase","name":"PocketBase","tagline":"Open-source backend in one file: DB, auth, file storage and admin UI.",
+  "category":"Apps","logo":"pocketbase","links":{"website":"https://pocketbase.io"},"tags":["backend","database","baas"],"primaryPort":"PORT",
+  "variables":[
+    {"key":"POCKETBASE_ADMIN_EMAIL","label":"Admin email","default":"admin@example.com"},
+    {"key":"POCKETBASE_ADMIN_PASSWORD","label":"Admin password","generate":"password:16","secret":true},
+    {"key":"PORT","label":"Host port","default":"8090"}] }

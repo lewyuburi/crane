@@ -1,0 +1,3 @@
+{ "id":"searxng","name":"SearXNG","tagline":"Privacy-respecting, hackable metasearch engine.",
+  "category":"Apps","logo":"searxng","links":{"github":"https://github.com/searxng/searxng"},"tags":["search","privacy"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"8085"}] }

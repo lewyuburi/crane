@@ -1,0 +1,12 @@
+{
+  "id": "pgadmin", "name": "pgAdmin",
+  "tagline": "Feature-rich web UI for managing PostgreSQL.",
+  "category": "Tools", "logo": "pgadmin",
+  "links": { "website": "https://www.pgadmin.org" },
+  "tags": ["database", "postgres", "admin"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "PGADMIN_EMAIL", "label": "Login email", "default": "admin@example.com" },
+    { "key": "PGADMIN_PASSWORD", "label": "Login password", "generate": "password:16", "secret": true },
+    { "key": "PORT", "label": "Host port", "default": "5050" }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "meilisearch", "name": "Meilisearch",
+  "tagline": "Lightning-fast, open-source search engine.",
+  "category": "Databases", "logo": "meilisearch",
+  "links": { "website": "https://www.meilisearch.com", "docs": "https://www.meilisearch.com/docs" },
+  "tags": ["search", "database"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "MASTER_KEY", "label": "Master key", "generate": "base64:24", "secret": true },
+    { "key": "PORT", "label": "Host port", "default": "7700" }
+  ]
+}

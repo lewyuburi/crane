@@ -21,19 +21,18 @@ final class AppModel {
     var networks: [Network] = []
     var diskUsage: DiskUsage?
 
-    // Machines
-    var machines: [Machine] = []
-    var busyMachineIDs: Set<String> = []
-    var isCreatingMachine = false
-
     // Runtime management
     var runtimes: [Runtime] = []
     var activeRuntimePath: String?
     var availableReleases: [RemoteRelease] = []
     var installingVersion: String?
 
-    private let cli = ContainerCLI.shared
+    private let cli: any ContainerControlling
     private let runtimeManager = RuntimeManager.shared
+
+    init(cli: any ContainerControlling = ContainerCLI.shared) {
+        self.cli = cli
+    }
 
     func refreshInstallState() async {
         isInstalled = await cli.isInstalled
@@ -114,16 +113,24 @@ final class AppModel {
     func setResources(_ container: Container, memory: String?, cpus: Int?) async {
         busyContainerIDs.insert(container.id)
         defer { busyContainerIDs.remove(container.id) }
+        let wasRunning = container.isRunning
         let args = container.recreateArguments(memory: memory, cpus: cpus)
         do {
             try? await cli.stop(id: container.id)
             try await cli.delete(id: container.id)
-            try await cli.runDetached(arguments: args)
+            // Preserve the prior state: re-run only if it was running; otherwise just recreate
+            // it stopped so changing RAM doesn't silently start a stopped container.
+            if wasRunning {
+                try await cli.runDetached(arguments: args)
+            } else {
+                try await cli.createStopped(arguments: args)
+            }
             await refreshContainers()
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            // Refresh first, then set the error last so a successful refresh doesn't wipe it.
             await refreshContainers()
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -146,10 +153,15 @@ final class AppModel {
     private func bulk(_ ids: [String], _ action: @escaping (String) async throws -> Void) async {
         busyContainerIDs.formUnion(ids)
         defer { busyContainerIDs.subtract(ids) }
+        var errors: [String] = []
         for id in ids {
-            do { try await action(id) } catch { errorMessage = error.localizedDescription }
+            do { try await action(id) } catch { errors.append(error.localizedDescription) }
         }
         await refreshContainers()
+        // Set after refresh (a successful refresh clears errorMessage). Report all failures.
+        if let first = errors.first {
+            errorMessage = errors.count == 1 ? first : "\(errors.count) of \(ids.count) failed — \(first)"
+        }
     }
 
     private func perform(_ container: Container, _ action: @escaping (String) async throws -> Void) async {
@@ -233,75 +245,86 @@ final class AppModel {
     /// Streaming log of the most recent compose up, shown in a sheet.
     var composeLog = ""
     private func composeLogLine(_ s: String) { composeLog += s + "\n" }
+    /// Serializes compose operations so two concurrent ups don't interleave/clobber `composeLog`.
+    private var composeBusy = false
+
+    /// The headless engine that performs the actual orchestration (also reusable by a CLI).
+    private var engine: ComposeEngine { ComposeEngine(cli: cli) }
+
+    /// Pipe a Compose operation's events into the UI: append progress to the live log and surface
+    /// the last failure as the error banner.
+    private func consume(_ events: AsyncStream<ComposeEvent>) async {
+        composeLog = ""
+        for await event in events {
+            switch event {
+            case .log(let s): composeLogLine(s)
+            case .failure(let m): composeLogLine("  ✗ \(m)"); errorMessage = m
+            }
+        }
+        await refreshContainers()
+    }
 
     func composeUp(_ ref: ComposeProjectRef) async {
+        guard !composeBusy else { return }
+        composeBusy = true
+        defer { composeBusy = false }
         reparse(ref)
         guard let project = composeParsed[ref.projectName] else { return }
         busyComposeProjects.insert(ref.projectName)
         defer { busyComposeProjects.remove(ref.projectName) }
-        composeLog = ""
-        composeLogLine("▸ Network \(project.name)")
-        await cli.createNetworkIfNeeded(project.name)
-        for vol in project.namedVolumes {
-            composeLogLine("▸ Volume \(vol)")
-            await cli.createVolumeIfNeeded(vol)
-        }
-        for service in project.startupOrder {
-            composeLogLine("▸ \(service.name): starting…")
-            do {
-                try await startComposeService(service, project: project)
-                composeLogLine("  ✓ \(service.containerName(project: project.name))")
-            } catch {
-                composeLogLine("  ✗ \(error.localizedDescription)")
-                errorMessage = error.localizedDescription
-            }
-        }
-        composeLogLine("Done.")
-        await refreshContainers()
+        await consume(engine.up(project))
     }
 
     /// Create & start a single compose service (like `docker compose up <service>`).
     func composeUpService(project projectName: String, service serviceName: String) async {
+        guard !composeBusy else { return }
+        composeBusy = true
+        defer { composeBusy = false }
         guard let project = composeParsed[projectName],
               let service = project.services.first(where: { $0.name == serviceName }) else { return }
         busyComposeProjects.insert(projectName)
         defer { busyComposeProjects.remove(projectName) }
-        composeLog = ""
-        composeLogLine("▸ Network \(project.name)")
-        await cli.createNetworkIfNeeded(project.name)
-        composeLogLine("▸ \(service.name): starting…")
-        do {
-            try await startComposeService(service, project: project)
-            composeLogLine("  ✓ \(service.containerName(project: project.name))")
-        } catch {
-            composeLogLine("  ✗ \(error.localizedDescription)")
-            errorMessage = error.localizedDescription
-        }
-        composeLogLine("Done.")
-        await refreshContainers()
+        await consume(engine.up(service: service, in: project))
     }
 
-    /// Recreate-and-run one service: remove any existing container with its name
-    /// (compose-style up), pre-create bind dirs, build if needed, then run detached.
-    private func startComposeService(_ service: ComposeService, project: ComposeProject) async throws {
-        let name = service.containerName(project: project.name)
-        // Recreate: a previous (possibly stopped/failed) container blocks `run --name`.
-        try? await cli.stop(id: name)
-        try? await cli.delete(id: name)
-        for path in service.hostBindPaths where !FileManager.default.fileExists(atPath: path) {
-            try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
-        }
-        if let build = service.build, let tag = service.runImage(project: project.name) {
-            composeLogLine("  building \(tag)…")
-            try await cli.buildImage(build, tag: tag)
-        }
-        try await cli.runDetached(arguments: service.runArguments(project: project.name))
+    // MARK: - App catalog (one-click templates)
+
+    /// Directory where Crane stores deployed-template projects (compose file + .env).
+    private var appsDirectory: URL {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return support.appendingPathComponent("Crane/apps", isDirectory: true)
     }
+
+    /// Render a template to a managed Compose project (compose.yml + .env), register it, and
+    /// bring it up. Reuses the whole compose pipeline (network/volumes, DNS, grouping).
+    @discardableResult
+    func deployTemplate(_ template: AppTemplate, instanceName: String, values: [String: String]) async -> ComposeProjectRef? {
+        let project = ProjectName.sanitize(instanceName.isEmpty ? template.id : instanceName)
+        let dir = appsDirectory.appendingPathComponent(project, isDirectory: true)
+        let composeURL = dir.appendingPathComponent("docker-compose.yml")
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try template.compose.write(to: composeURL, atomically: true, encoding: .utf8)
+            let envText = TemplateRenderer.envFile(values: values, project: project)
+            try envText.write(to: dir.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
+        } catch {
+            errorMessage = "Couldn't write the app files: \(error.localizedDescription)"
+            return nil
+        }
+        guard let ref = addComposeProject(url: composeURL) else { return nil }
+        await composeUp(ref)
+        return ref
+    }
+
 
     func composeDown(_ projectName: String) async {
         busyComposeProjects.insert(projectName)
         defer { busyComposeProjects.remove(projectName) }
-        await bulkDelete(containers(inProject: projectName).map(\.id))
+        let ids = containers(inProject: projectName).map(\.id)
+        busyContainerIDs.formUnion(ids)
+        defer { busyContainerIDs.subtract(ids) }
+        await engine.down(projectName)
+        await refreshContainers()
     }
 
     // MARK: - Volumes / Networks / Storage
@@ -362,49 +385,6 @@ final class AppModel {
     func pruneContainers() async {
         do { try await cli.pruneContainers(); await refreshContainers(); await refreshDiskUsage() }
         catch { errorMessage = error.localizedDescription }
-    }
-
-    // MARK: - Machines
-
-    func refreshMachines() async {
-        await refreshInstallState()
-        guard isInstalled, await cli.isSystemRunning() else { machines = []; return }
-        do {
-            machines = try await cli.listMachines()
-            errorMessage = nil
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func createMachine(image: String, name: String) async -> Bool {
-        isCreatingMachine = true
-        defer { isCreatingMachine = false }
-        do {
-            try await cli.machineCreate(image: image, name: name)
-            await refreshMachines()
-            errorMessage = nil
-            return true
-        } catch {
-            errorMessage = error.localizedDescription
-            return false
-        }
-    }
-
-    func bootMachine(_ machine: Machine) async { await performMachine(machine) { try await self.cli.machineBoot(name: $0) } }
-    func stopMachine(_ machine: Machine) async { await performMachine(machine) { try await self.cli.machineStop(name: $0) } }
-    func deleteMachine(_ machine: Machine) async { await performMachine(machine) { try await self.cli.machineDelete(name: $0) } }
-    func setDefaultMachine(_ machine: Machine) async { await performMachine(machine) { try await self.cli.machineSetDefault(name: $0) } }
-
-    private func performMachine(_ machine: Machine, _ action: @escaping (String) async throws -> Void) async {
-        busyMachineIDs.insert(machine.id)
-        defer { busyMachineIDs.remove(machine.id) }
-        do {
-            try await action(machine.id)
-            await refreshMachines()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
     }
 
     // MARK: - Runtimes

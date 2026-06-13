@@ -1,0 +1,6 @@
+{ "id":"flowise","name":"Flowise","tagline":"Open-source visual builder for LLM apps and AI agents.",
+  "category":"Apps","logo":"flowise","links":{"website":"https://flowiseai.com"},"tags":["ai","llm","no-code"],"primaryPort":"PORT",
+  "variables":[
+    {"key":"FLOWISE_USERNAME","label":"Username","default":"admin"},
+    {"key":"FLOWISE_PASSWORD","label":"Password","generate":"password:16","secret":true},
+    {"key":"PORT","label":"Host port","default":"3070"}] }

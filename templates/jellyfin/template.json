@@ -1,0 +1,3 @@
+{ "id":"jellyfin","name":"Jellyfin","tagline":"Free software media system that puts you in control of your media.",
+  "category":"Apps","logo":"jellyfin","links":{"website":"https://jellyfin.org"},"tags":["media","streaming"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"8096"}] }

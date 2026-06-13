@@ -1,0 +1,10 @@
+services:
+  nextcloud:
+    image: nextcloud:apache
+    restart: unless-stopped
+    ports:
+      - "${PORT}:80"
+    volumes:
+      - nextclouddata:/var/www/html
+volumes:
+  nextclouddata:

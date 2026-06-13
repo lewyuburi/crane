@@ -1,0 +1,10 @@
+services:
+  stirling-pdf:
+    image: stirlingtools/stirling-pdf:latest
+    restart: unless-stopped
+    ports:
+      - "${PORT}:8080"
+    volumes:
+      - stirling-data:/usr/share/stirling/data
+volumes:
+  stirling-data:
