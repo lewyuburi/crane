@@ -1,0 +1,22 @@
+# SwiftPM build output
+.build/
+build/
+
+# SwiftPM / Xcode local state
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# Knowledge graph / tooling output
+graphify-out/
+
+# macOS
+.DS_Store
+
+# Signing / secrets
+*.p12
+*.mobileprovision
+.env
