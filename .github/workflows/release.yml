@@ -1,7 +1,7 @@
 name: Release
 
-# Tag a version to build, package, and publish a downloadable .app that the Homebrew cask installs.
-#   git tag v0.1.0 && git push origin v0.1.0
+# Tag a version to build, package, publish, and bump the Homebrew cask:
+#   git tag v0.1.2 && git push origin v0.1.2
 on:
   push:
     tags: ["v*"]
@@ -12,6 +12,9 @@ permissions:
 jobs:
   release:
     runs-on: macos-26
+    outputs:
+      dmg_sha: ${{ steps.pkg.outputs.dmg_sha }}
+      version: ${{ steps.pkg.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,19 +29,27 @@ jobs:
 
       # TODO (clean Gatekeeper install): sign with Developer ID + notarize here, using secrets
       # (CERT_P12_BASE64, CERT_PASSWORD, NOTARY_APPLE_ID, NOTARY_TEAM_ID, NOTARY_PASSWORD).
-      # Without notarization the cask installs, but first launch needs right-click → Open.
 
-      - name: Package (.dmg + .zip, arm64)
+      - name: Package (.dmg with drag-to-Applications + .zip, arm64)
+        id: pkg
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          # .zip (for auto-updaters / scripted installs)
           ditto -c -k --keepParent build/Crane.app "Crane-${VERSION}-arm64.zip"
-          # .dmg (drag-to-Applications, for manual downloads)
-          mkdir -p dmg
-          cp -R build/Crane.app dmg/
-          ln -s /Applications dmg/Applications
-          hdiutil create -volname "Crane" -srcfolder dmg -ov -format UDZO "Crane-${VERSION}-arm64.dmg"
-          echo "DMG_SHA=$(shasum -a 256 "Crane-${VERSION}-arm64.dmg" | awk '{print $1}')" >> "$GITHUB_ENV"
+
+          brew install create-dmg
+          create-dmg \
+            --volname "Crane" \
+            --window-pos 200 120 --window-size 540 380 \
+            --icon-size 110 \
+            --icon "Crane.app" 150 190 \
+            --hide-extension "Crane.app" \
+            --app-drop-link 390 190 \
+            "Crane-${VERSION}-arm64.dmg" "build/Crane.app" || true
+          test -f "Crane-${VERSION}-arm64.dmg"   # create-dmg may exit non-zero yet still produce the dmg
+
+          SHA="$(shasum -a 256 "Crane-${VERSION}-arm64.dmg" | awk '{print $1}')"
+          echo "dmg_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -59,4 +70,28 @@ jobs:
 
             Or download the `.dmg` below and drag Crane to Applications.
 
-            DMG SHA-256 (for the cask): `${{ env.DMG_SHA }}`
+            DMG SHA-256: `${{ steps.pkg.outputs.dmg_sha }}`
+
+  # Auto-bumps Casks/crane.rb in the tap repo. Requires a repo secret TAP_TOKEN — a PAT with
+  # contents:write on lewyuburi/homebrew-tap. If the secret is absent the job is skipped.
+  bump-cask:
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ github.repository == 'lewyuburi/crane' }}
+    steps:
+      - name: Check out the tap
+        uses: actions/checkout@v4
+        with:
+          repository: lewyuburi/homebrew-tap
+          token: ${{ secrets.TAP_TOKEN }}
+
+      - name: Bump cask
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          SHA: ${{ needs.release.outputs.dmg_sha }}
+        run: |
+          sed -i -E "s/version \"[^\"]+\"/version \"${VERSION}\"/" Casks/crane.rb
+          sed -i -E "s/sha256 \"[^\"]+\"/sha256 \"${SHA}\"/" Casks/crane.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "crane ${VERSION}" && git push
