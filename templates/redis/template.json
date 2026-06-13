@@ -1,0 +1,10 @@
+{
+  "id": "redis", "name": "Redis",
+  "tagline": "In-memory data store, cache and message broker.",
+  "category": "Databases", "logo": "redis",
+  "links": { "website": "https://redis.io", "docs": "https://redis.io/docs/" },
+  "tags": ["database", "cache"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "PORT", "label": "Host port", "default": "6379" }
+  ]
+}

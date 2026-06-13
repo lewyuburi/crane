@@ -1,0 +1,3 @@
+{ "id":"nocodb","name":"NocoDB","tagline":"Open-source Airtable alternative. Turn any database into a smart spreadsheet.",
+  "category":"Apps","logo":"nocodb","links":{"website":"https://nocodb.com"},"tags":["database","no-code","spreadsheet"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"8090"}] }

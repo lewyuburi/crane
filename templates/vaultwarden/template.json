@@ -1,0 +1,11 @@
+{
+  "id": "vaultwarden", "name": "Vaultwarden",
+  "tagline": "Lightweight Bitwarden-compatible password manager.",
+  "category": "Apps", "logo": "vaultwarden",
+  "links": { "github": "https://github.com/dani-garcia/vaultwarden" },
+  "tags": ["security", "passwords"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "ADMIN_TOKEN", "label": "Admin token", "generate": "base64:32", "secret": true },
+    { "key": "PORT", "label": "Host port", "default": "8222" }
+  ]
+}

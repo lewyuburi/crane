@@ -15,15 +15,20 @@ struct Runtime: Identifiable, Hashable {
     var id: String { binaryPath }
     let binaryPath: String
     let source: RuntimeSource
-    var version: String?
+    var version: String? = nil
 
     /// Isolated data root for managed/bundled runtimes so they never collide
     /// with a system install's state. `nil` means "use the runtime's default".
-    var dataRoot: String?
+    var dataRoot: String? = nil
 
     var displayName: String {
         let v = version ?? "unknown"
         return "\(source.rawValue) · \(v)"
+    }
+
+    /// The install root: two levels above the binary (`<root>/bin/container`).
+    var installRoot: String {
+        URL(fileURLWithPath: binaryPath).deletingLastPathComponent().deletingLastPathComponent().path
     }
 }
 
@@ -150,9 +155,13 @@ actor RuntimeManager {
     private static func probeVersion(at path: String) async -> String? {
         guard let result = try? await ProcessRunner.run(executable: path, arguments: ["--version"]),
               result.status == 0 else { return nil }
-        let out = String(decoding: result.stdout, as: UTF8.self)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        // Normalize "container CLI version 1.0.0 (build: …)" → "1.0.0".
+        return normalizeVersion(String(decoding: result.stdout, as: UTF8.self))
+    }
+
+    /// Normalize `container --version` output ("container CLI version 1.0.0 (build: …)") to "1.0.0",
+    /// falling back to the trimmed string when there's no semver. Pure/testable.
+    static func normalizeVersion(_ output: String) -> String? {
+        let out = output.trimmingCharacters(in: .whitespacesAndNewlines)
         if let range = out.range(of: #"\d+\.\d+\.\d+"#, options: .regularExpression) {
             return String(out[range])
         }
@@ -170,11 +179,15 @@ actor RuntimeManager {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw RuntimeError.download("GitHub releases request failed")
         }
-        let raw = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] ?? []
+        return Self.parseReleases(from: data)
+    }
+
+    /// Parse the GitHub releases JSON into `RemoteRelease`s, skipping entries without a tag. Pure.
+    static func parseReleases(from data: Data) -> [RemoteRelease] {
+        let raw = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] ?? []
         return raw.compactMap { obj in
             guard let tag = obj["tag_name"] as? String else { return nil }
-            let prerelease = (obj["prerelease"] as? Bool) ?? false
-            return RemoteRelease(version: tag, isPrerelease: prerelease)
+            return RemoteRelease(version: tag, isPrerelease: (obj["prerelease"] as? Bool) ?? false)
         }
     }
 
@@ -183,8 +196,17 @@ actor RuntimeManager {
     ///
     /// We run Apple's already-signed binary as-is — never re-signing — so the
     /// `com.apple.security.virtualization` entitlement rides along on Apple's signature.
+    /// A version tag is safe to put in a download URL and a filesystem path component.
+    static func isValidVersionTag(_ tag: String) -> Bool {
+        tag.range(of: #"^v?\d+\.\d+\.\d+([.\-][0-9A-Za-z.\-]+)?$"#, options: .regularExpression) != nil
+    }
+
     @discardableResult
     func install(version: String) async throws -> Runtime {
+        // Guard against a hostile tag escaping managedRoot via `appendingPathComponent`.
+        guard Self.isValidVersionTag(version) else {
+            throw RuntimeError.download("Invalid version tag: \(version)")
+        }
         let asset = "container-\(version)-installer-signed.pkg"
         guard let url = URL(string:
             "https://github.com/apple/container/releases/download/\(version)/\(asset)") else {

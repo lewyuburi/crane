@@ -1,0 +1,13 @@
+services:
+  flowise:
+    image: flowiseai/flowise:latest
+    restart: unless-stopped
+    environment:
+      FLOWISE_USERNAME: ${FLOWISE_USERNAME}
+      FLOWISE_PASSWORD: ${FLOWISE_PASSWORD}
+    ports:
+      - "${PORT}:3000"
+    volumes:
+      - flowise:/root/.flowise
+volumes:
+  flowise:

@@ -1,0 +1,12 @@
+{
+  "id": "mongodb", "name": "MongoDB",
+  "tagline": "Document-oriented NoSQL database.",
+  "category": "Databases", "logo": "mongodb",
+  "links": { "website": "https://www.mongodb.com", "docs": "https://www.mongodb.com/docs/" },
+  "tags": ["database", "nosql"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "MONGO_USER", "label": "Root user", "default": "root" },
+    { "key": "MONGO_PASSWORD", "label": "Root password", "generate": "password:24", "secret": true },
+    { "key": "PORT", "label": "Host port", "default": "27017" }
+  ]
+}

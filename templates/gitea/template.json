@@ -1,0 +1,11 @@
+{
+  "id": "gitea", "name": "Gitea",
+  "tagline": "Lightweight self-hosted Git service.",
+  "category": "Apps", "logo": "gitea",
+  "links": { "website": "https://about.gitea.com", "docs": "https://docs.gitea.com" },
+  "tags": ["git", "vcs", "self-hosted"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "PORT", "label": "Web port", "default": "3001" },
+    { "key": "SSH_PORT", "label": "SSH port", "default": "2222" }
+  ]
+}

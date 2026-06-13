@@ -1,0 +1,12 @@
+services:
+  baserow:
+    image: baserow/baserow:1.25.2
+    restart: unless-stopped
+    environment:
+      BASEROW_PUBLIC_URL: http://localhost:${PORT}
+    ports:
+      - "${PORT}:80"
+    volumes:
+      - baserow:/baserow/data
+volumes:
+  baserow:

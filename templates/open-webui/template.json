@@ -1,0 +1,3 @@
+{ "id":"open-webui","name":"Open WebUI","tagline":"Extensible, self-hosted AI chat interface (ChatGPT-style).",
+  "category":"Apps","logo":"open-webui","links":{"website":"https://openwebui.com"},"tags":["ai","llm","chat"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"3080"}] }

@@ -1,0 +1,8 @@
+{
+  "id": "phpmyadmin", "name": "phpMyAdmin",
+  "tagline": "Web interface for MySQL and MariaDB administration.",
+  "category": "Tools", "logo": "phpmyadmin",
+  "links": { "website": "https://www.phpmyadmin.net" },
+  "tags": ["database", "mysql", "admin"], "primaryPort": "PORT",
+  "variables": [ { "key": "PORT", "label": "Host port", "default": "8081" } ]
+}

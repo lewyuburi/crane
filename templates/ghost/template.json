@@ -1,0 +1,8 @@
+{
+  "id": "ghost", "name": "Ghost",
+  "tagline": "Professional publishing and newsletters.",
+  "category": "Apps", "logo": "ghost",
+  "links": { "website": "https://ghost.org", "docs": "https://ghost.org/docs/" },
+  "tags": ["cms", "blog"], "primaryPort": "PORT",
+  "variables": [ { "key": "PORT", "label": "Host port", "default": "2368" } ]
+}

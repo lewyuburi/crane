@@ -1,0 +1,13 @@
+{
+  "id": "rabbitmq", "name": "RabbitMQ",
+  "tagline": "Reliable message broker with a management UI.",
+  "category": "Apps", "logo": "rabbitmq",
+  "links": { "website": "https://www.rabbitmq.com" },
+  "tags": ["messaging", "queue"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "RABBITMQ_USER", "label": "User", "default": "admin" },
+    { "key": "RABBITMQ_PASSWORD", "label": "Password", "generate": "password:20", "secret": true },
+    { "key": "AMQP_PORT", "label": "AMQP port", "default": "5672" },
+    { "key": "PORT", "label": "Management UI port", "default": "15672" }
+  ]
+}

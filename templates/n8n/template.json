@@ -1,0 +1,8 @@
+{
+  "id": "n8n", "name": "n8n",
+  "tagline": "Workflow automation with a fair-code license.",
+  "category": "Apps", "logo": "n8n",
+  "links": { "website": "https://n8n.io", "docs": "https://docs.n8n.io" },
+  "tags": ["automation", "workflow", "no-code"], "primaryPort": "PORT",
+  "variables": [ { "key": "PORT", "label": "Host port", "default": "5678" } ]
+}

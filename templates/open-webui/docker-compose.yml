@@ -1,0 +1,10 @@
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    restart: unless-stopped
+    ports:
+      - "${PORT}:8080"
+    volumes:
+      - open-webui:/app/backend/data
+volumes:
+  open-webui:

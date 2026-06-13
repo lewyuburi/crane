@@ -1,0 +1,3 @@
+{ "id":"nginx","name":"Nginx","tagline":"High-performance web server and reverse proxy.",
+  "category":"Apps","logo":"nginx","links":{"website":"https://nginx.org"},"tags":["web","server"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"8060"}] }

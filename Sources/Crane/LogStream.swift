@@ -10,6 +10,7 @@ final class LogStream {
     var errorMessage: String?
 
     private var process: Process?
+    private var readHandle: FileHandle?
     private let containerID: String
 
     init(containerID: String) {
@@ -24,6 +25,10 @@ final class LogStream {
     }
 
     func stop() {
+        // Clear the reader handler too, or it keeps the pipe alive and firing after we drop
+        // the process (a file-descriptor leak under --follow).
+        readHandle?.readabilityHandler = nil
+        readHandle = nil
         process?.terminate()
         process = nil
         isRunning = false
@@ -38,6 +43,7 @@ final class LogStream {
             self.process = proc
 
             let handle = pipe.fileHandleForReading
+            self.readHandle = handle
             // Stream chunks as they arrive off a background reader; hop to main to append.
             handle.readabilityHandler = { [weak self] fh in
                 let data = fh.availableData
@@ -61,6 +67,7 @@ final class LogStream {
                 }
             }
             handle.readabilityHandler = nil
+            readHandle = nil
         } catch {
             errorMessage = error.localizedDescription
         }

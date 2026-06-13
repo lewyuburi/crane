@@ -1,0 +1,11 @@
+{
+  "id": "code-server", "name": "code-server",
+  "tagline": "Run VS Code in the browser, on any machine.",
+  "category": "Apps", "logo": "code-server",
+  "links": { "github": "https://github.com/coder/code-server" },
+  "tags": ["ide", "vscode", "dev"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "PASSWORD", "label": "Access password", "generate": "password:16", "secret": true },
+    { "key": "PORT", "label": "Host port", "default": "8088" }
+  ]
+}

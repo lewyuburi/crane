@@ -1,0 +1,8 @@
+{
+  "id": "nextcloud", "name": "Nextcloud",
+  "tagline": "Self-hosted file sync, share and collaboration.",
+  "category": "Apps", "logo": "nextcloud",
+  "links": { "website": "https://nextcloud.com" },
+  "tags": ["files", "storage", "self-hosted"], "primaryPort": "PORT",
+  "variables": [ { "key": "PORT", "label": "Host port", "default": "8082" } ]
+}

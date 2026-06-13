@@ -1,0 +1,13 @@
+services:
+  linkding:
+    image: sissbruecker/linkding:latest
+    restart: unless-stopped
+    environment:
+      LD_SUPERUSER_NAME: ${SUPERUSER_NAME}
+      LD_SUPERUSER_PASSWORD: ${SUPERUSER_PASSWORD}
+    ports:
+      - "${PORT}:9090"
+    volumes:
+      - linkding:/etc/linkding/data
+volumes:
+  linkding:

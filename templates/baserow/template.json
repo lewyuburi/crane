@@ -1,0 +1,3 @@
+{ "id":"baserow","name":"Baserow","tagline":"Open-source no-code database and Airtable alternative.",
+  "category":"Apps","logo":"baserow","links":{"website":"https://baserow.io"},"tags":["database","no-code"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"8095"}] }

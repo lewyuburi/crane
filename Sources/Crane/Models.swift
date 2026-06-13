@@ -19,21 +19,21 @@ struct Container: Identifiable, Hashable {
     let id: String
     var image: String
     var status: ContainerStatus
-    var addresses: [String]
-    var os: String?
-    var arch: String?
-    var hostname: String?
+    var addresses: [String] = []
+    var os: String? = nil
+    var arch: String? = nil
+    var hostname: String? = nil
     var ports: [PortForward] = []
     var mounts: [MountPoint] = []
     var labels: [String: String] = [:]
 
     // Fields needed to faithfully recreate the container with a new resource limit
     // (Apple `container` sets memory/cpus only at creation — no live resize).
-    var memoryBytes: Int64?
-    var cpus: Int?
+    var memoryBytes: Int64? = nil
+    var cpus: Int? = nil
     var environment: [String] = []
-    var network: String?
-    var entrypoint: String?
+    var network: String? = nil
+    var entrypoint: String? = nil
     var commandArgs: [String] = []
 
     var isRunning: Bool { status == .running }

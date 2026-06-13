@@ -1,0 +1,3 @@
+{ "id":"glances","name":"Glances","tagline":"A cross-platform system monitoring tool with a web UI.",
+  "category":"Monitoring","logo":"glances","links":{"website":"https://nicolargo.github.io/glances/"},"tags":["monitoring","system"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"61208"}] }

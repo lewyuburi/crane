@@ -1,0 +1,6 @@
+{ "id":"linkding","name":"Linkding","tagline":"A clean, self-hosted bookmark manager.",
+  "category":"Apps","logo":"linkding","links":{"github":"https://github.com/sissbruecker/linkding"},"tags":["bookmarks","productivity"],"primaryPort":"PORT",
+  "variables":[
+    {"key":"SUPERUSER_NAME","label":"Admin user","default":"admin"},
+    {"key":"SUPERUSER_PASSWORD","label":"Admin password","generate":"password:16","secret":true},
+    {"key":"PORT","label":"Host port","default":"9090"}] }

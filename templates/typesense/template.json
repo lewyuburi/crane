@@ -1,0 +1,5 @@
+{ "id":"typesense","name":"Typesense","tagline":"Fast, typo-tolerant open-source search engine.",
+  "category":"Databases","logo":"typesense","links":{"website":"https://typesense.org"},"tags":["search","ai","database"],"primaryPort":"PORT",
+  "variables":[
+    {"key":"API_KEY","label":"API key","generate":"base64:24","secret":true},
+    {"key":"PORT","label":"Host port","default":"8108"}] }

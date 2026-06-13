@@ -1,0 +1,3 @@
+{ "id":"dashy","name":"Dashy","tagline":"A self-hostable personal dashboard for your apps and services.",
+  "category":"Tools","logo":"dashy","links":{"website":"https://dashy.to"},"tags":["dashboard","homepage"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"4000"}] }

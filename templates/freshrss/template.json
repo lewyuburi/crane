@@ -1,0 +1,3 @@
+{ "id":"freshrss","name":"FreshRSS","tagline":"A free, self-hostable RSS and Atom feed aggregator.",
+  "category":"Apps","logo":"freshrss","links":{"website":"https://freshrss.org"},"tags":["rss","news","reader"],"primaryPort":"PORT",
+  "variables":[{"key":"TZ","label":"Timezone","default":"UTC"},{"key":"PORT","label":"Host port","default":"8086"}] }

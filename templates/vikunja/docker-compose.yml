@@ -1,0 +1,14 @@
+services:
+  vikunja:
+    image: vikunja/vikunja:latest
+    restart: unless-stopped
+    environment:
+      VIKUNJA_SERVICE_PUBLICURL: http://localhost:${PORT}/
+    ports:
+      - "${PORT}:3456"
+    volumes:
+      - vikunja-files:/app/vikunja/files
+      - vikunja-db:/db
+volumes:
+  vikunja-files:
+  vikunja-db:

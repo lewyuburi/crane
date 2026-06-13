@@ -1,0 +1,11 @@
+{
+  "id": "grafana", "name": "Grafana",
+  "tagline": "Operational dashboards for your metrics.",
+  "category": "Monitoring", "logo": "grafana",
+  "links": { "website": "https://grafana.com", "docs": "https://grafana.com/docs/" },
+  "tags": ["monitoring", "dashboards"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "ADMIN_PASSWORD", "label": "Admin password", "generate": "password:20", "secret": true },
+    { "key": "PORT", "label": "Host port", "default": "3000" }
+  ]
+}

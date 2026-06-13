@@ -15,6 +15,9 @@ rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp ".build/release/Crane" "$CONTENTS/MacOS/Crane"
 
+echo "▸ Bundling app templates…"
+cp -R "templates" "$CONTENTS/Resources/templates"
+
 echo "▸ Generating icon…"
 ICONSET="build/Crane.iconset"
 rm -rf "$ICONSET"

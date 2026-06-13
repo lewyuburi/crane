@@ -1,0 +1,13 @@
+{
+  "id": "minio", "name": "MinIO",
+  "tagline": "High-performance, S3-compatible object storage.",
+  "category": "Storage", "logo": "minio",
+  "links": { "website": "https://min.io", "docs": "https://min.io/docs/minio/linux/index.html" },
+  "tags": ["storage", "s3"], "primaryPort": "CONSOLE_PORT",
+  "variables": [
+    { "key": "MINIO_ROOT_USER", "label": "Root user", "default": "minioadmin" },
+    { "key": "MINIO_ROOT_PASSWORD", "label": "Root password", "generate": "password:20", "secret": true },
+    { "key": "PORT", "label": "API port", "default": "9000" },
+    { "key": "CONSOLE_PORT", "label": "Console port", "default": "9001" }
+  ]
+}

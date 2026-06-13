@@ -45,8 +45,7 @@ actor ContainerCLI {
     static func environment(for runtime: Runtime) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         guard let dataRoot = runtime.dataRoot else { return env }
-        let installRoot = URL(fileURLWithPath: runtime.binaryPath)
-            .deletingLastPathComponent().deletingLastPathComponent().path
+        let installRoot = runtime.installRoot
         env["CONTAINER_INSTALL_ROOT"] = installRoot
         env["CONTAINER_APP_ROOT"] = dataRoot
         env["CONTAINER_LOG_ROOT"] = installRoot + "/logs"
@@ -143,6 +142,12 @@ actor ContainerCLI {
         try await run(["run"] + Self.withDefaultDNS(arguments))
     }
 
+    /// Create a container without starting it (used to recreate a *stopped* container so it
+    /// keeps its stopped state).
+    func createStopped(arguments: [String]) async throws {
+        try await run(["create"] + Self.withDefaultDNS(arguments))
+    }
+
     /// Apple `container`'s per-network gateway resolver (192.168.65.1) intermittently fails
     /// IPv4 (A-record) forwarding — and doesn't resolve sibling container names either — so
     /// containers can't reach the internet by hostname. We default `--dns` to the host's own
@@ -165,6 +170,41 @@ actor ContainerCLI {
             }
             .filter { !$0.hasPrefix("127.") && $0 != "::1" && !$0.lowercased().hasPrefix("fe80") } ?? []
         return parsed.isEmpty ? ["1.1.1.1", "8.8.8.8"] : parsed
+    }
+
+    /// The internal DNS domain configured for container-to-container name resolution, or nil.
+    /// Multi-service stacks need this (`[dns].domain` in config.toml + a matching `system dns
+    /// create <domain>`); see the experimental stack support in AppModel.
+    func configuredDNSDomain() -> String? {
+        let path = NSHomeDirectory() + "/.config/container/config.toml"
+        guard let toml = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        return Self.dnsDomain(inTOML: toml)
+    }
+
+    /// Extracts `domain = "x"` from the `[dns]` section of a config.toml string (pure/testable).
+    static func dnsDomain(inTOML toml: String) -> String? {
+        var inDNS = false
+        for raw in toml.split(whereSeparator: \.isNewline) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("[") { inDNS = (line == "[dns]"); continue }
+            guard inDNS, line.hasPrefix("domain"), let eq = line.firstIndex(of: "=") else { continue }
+            var value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
+            if let quote = value.first, quote == "\"" || quote == "'" {
+                // Quoted: content up to the matching closing quote (ignores any trailing comment).
+                if let close = value.dropFirst().firstIndex(of: quote) {
+                    return String(value[value.index(after: value.startIndex)..<close])
+                }
+            }
+            if let hash = value.firstIndex(of: "#") { value = String(value[..<hash]) }  // strip inline comment
+            return value.trimmingCharacters(in: .whitespaces)
+        }
+        return nil
+    }
+
+    /// Run a one-shot command in a running container and return its stdout.
+    @discardableResult
+    func exec(id: String, command: [String]) async throws -> Data {
+        try await run(["exec", id] + command)
     }
 
     func buildImage(_ build: ComposeBuild, tag: String) async throws {
@@ -196,44 +236,6 @@ actor ContainerCLI {
             return nil
         }
         return StatsDecoding.decode(from: data).first
-    }
-
-    // MARK: - Machines
-
-    func listMachines() async throws -> [Machine] {
-        let data = try await run(["machine", "list", "--format", "json"])
-        return MachineDecoding.decode(from: data)
-    }
-
-    func machineCreate(image: String, name: String) async throws {
-        try await run(["machine", "create", "--name", name, image])
-    }
-
-    /// Boots a stopped machine by running a no-op (there is no `machine start`).
-    func machineBoot(name: String) async throws {
-        try await run(["machine", "run", "--name", name, "--detach", "true"])
-    }
-
-    func machineStop(name: String) async throws { try await run(["machine", "stop", name]) }
-    func machineDelete(name: String) async throws { try await run(["machine", "delete", name]) }
-    func machineSetDefault(name: String) async throws { try await run(["machine", "set-default", name]) }
-
-    /// A PTY invocation for an interactive shell in a machine (`machine run -it -n`).
-    func machineShellInvocation(name: String) async throws -> ExecInvocation {
-        guard let runtime = await runtimes.activeRuntime() else {
-            throw ContainerCLIError.notInstalled
-        }
-        let env = Self.environment(for: runtime).map { "\($0.key)=\($0.value)" }
-        return ExecInvocation(
-            executable: runtime.binaryPath,
-            args: ["machine", "run", "--interactive", "--tty", "--name", name],
-            environment: env
-        )
-    }
-
-    func logs(id: String) async throws -> String {
-        let data = try await run(["logs", id])
-        return String(decoding: data, as: UTF8.self)
     }
 
     // MARK: - Images
@@ -314,8 +316,7 @@ actor ContainerCLI {
         }
         var args = ["system", "start", "--enable-kernel-install"]
         if let dataRoot = runtime.dataRoot {
-            let installRoot = URL(fileURLWithPath: runtime.binaryPath)
-                .deletingLastPathComponent().deletingLastPathComponent().path
+            let installRoot = runtime.installRoot
             args += [
                 "--app-root", dataRoot,
                 "--install-root", installRoot,

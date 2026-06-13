@@ -1,0 +1,3 @@
+{ "id":"actualbudget","name":"Actual Budget","tagline":"A super fast and privacy-focused app for managing your finances.",
+  "category":"Apps","logo":"actual-budget","links":{"website":"https://actualbudget.org"},"tags":["finance","budget"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"5006"}] }

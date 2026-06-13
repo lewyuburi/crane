@@ -1,0 +1,13 @@
+{
+  "id": "postgres", "name": "PostgreSQL",
+  "tagline": "The world's most advanced open-source relational database.",
+  "category": "Databases", "logo": "postgresql",
+  "links": { "website": "https://www.postgresql.org", "docs": "https://www.postgresql.org/docs/" },
+  "tags": ["database", "sql"], "primaryPort": "PORT",
+  "variables": [
+    { "key": "POSTGRES_USER", "label": "User", "default": "postgres" },
+    { "key": "POSTGRES_PASSWORD", "label": "Password", "generate": "password:24", "secret": true },
+    { "key": "POSTGRES_DB", "label": "Database", "default": "app" },
+    { "key": "PORT", "label": "Host port", "default": "5432" }
+  ]
+}

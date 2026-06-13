@@ -1,0 +1,28 @@
+services:
+  wordpress:
+    image: wordpress:latest
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      WORDPRESS_DB_HOST: ${PROJECT}-db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}
+      WORDPRESS_DB_NAME: wordpress
+    ports:
+      - "${PORT}:80"
+    volumes:
+      - wpdata:/var/www/html
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - wpdb:/var/lib/mysql
+volumes:
+  wpdata:
+  wpdb:

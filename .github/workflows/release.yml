@@ -1,0 +1,50 @@
+name: Release
+
+# Tag a version to build, package, and publish a downloadable .app that the Homebrew cask installs.
+#   git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # to create the GitHub Release
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
+
+      - name: Test
+        run: swift test
+
+      - name: Build .app bundle
+        run: ./Scripts/bundle.sh
+
+      # TODO (clean Gatekeeper install): sign with Developer ID + notarize here, using secrets
+      # (CERT_P12_BASE64, CERT_PASSWORD, NOTARY_APPLE_ID, NOTARY_TEAM_ID, NOTARY_PASSWORD).
+      # Without notarization the cask installs, but first launch needs right-click → Open.
+
+      - name: Zip the app
+        run: |
+          ditto -c -k --keepParent build/Crane.app Crane.zip
+          echo "SHA256=$(shasum -a 256 Crane.zip | awk '{print $1}')" >> "$GITHUB_ENV"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Crane.zip
+          body: |
+            ## Crane ${{ github.ref_name }}
+
+            Native macOS app for Apple's `container` tool.
+
+            **Install via Homebrew:**
+            ```
+            brew install --cask lewyuburi/tap/crane
+            ```
+
+            App SHA-256 (for the cask): `${{ env.SHA256 }}`

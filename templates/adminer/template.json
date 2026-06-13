@@ -1,0 +1,8 @@
+{
+  "id": "adminer", "name": "Adminer",
+  "tagline": "Lightweight database management in a single file.",
+  "category": "Tools", "logo": "adminer",
+  "links": { "website": "https://www.adminer.org" },
+  "tags": ["database", "admin"], "primaryPort": "PORT",
+  "variables": [ { "key": "PORT", "label": "Host port", "default": "8080" } ]
+}

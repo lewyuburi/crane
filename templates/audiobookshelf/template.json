@@ -1,0 +1,3 @@
+{ "id":"audiobookshelf","name":"Audiobookshelf","tagline":"Self-hosted audiobook and podcast server.",
+  "category":"Apps","logo":"audiobookshelf","links":{"website":"https://www.audiobookshelf.org"},"tags":["media","audiobooks","podcasts"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"13378"}] }

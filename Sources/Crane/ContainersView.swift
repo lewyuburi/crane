@@ -116,40 +116,69 @@ struct ContainersListColumn: View {
                 Button("Run a container") { showingRun = true }.buttonStyle(.borderedProminent)
             }
         } else {
+            // Flat rows (not DisclosureGroup) so every row — group header, child, standalone —
+            // gets the List's uniform full-width selection/hover and a consistent trailing
+            // action column. DisclosureGroup styled header vs children inconsistently.
             List(selection: $selection) {
-                ForEach(composeGroups, id: \.name) { group in
-                    DisclosureGroup(isExpanded: expanded(group.name)) {
-                        ForEach(serviceRows(group.name)) { row in
-                            if let container = row.container {
-                                ContainerListRow(container: container).tag(container.id)
-                            } else {
-                                ComposeServiceRow(service: row.service, image: row.image) {
-                                    selection = [Self.composeTag(group.name)]
-                                    tab = .logs
-                                    Task { await model.composeUpService(project: group.name, service: row.service) }
-                                }
-                                .selectionDisabled()
-                            }
+                ForEach(rows) { row in
+                    switch row {
+                    case let .group(name, ref):
+                        GroupHeaderRow(project: name, ref: ref, expanded: expanded(name)) {
+                            selection = [Self.composeTag(name)]
+                            tab = .logs
+                            if let ref { Task { await model.composeUp(ref) } }
                         }
-                    } label: {
-                        ComposeGroupLabel(project: group.name, ref: group.ref,
-                                          onUp: { ref in
-                                              selection = [Self.composeTag(ref.projectName)]
-                                              tab = .logs
-                                              Task { await model.composeUp(ref) }
-                                          })
+                        .tag(Self.composeTag(name))
+                    case let .container(c):
+                        ContainerListRow(container: c, indented: c.composeProject != nil).tag(c.id)
+                    case let .placeholder(project, service, image):
+                        ComposeServiceRow(service: service, image: image) {
+                            selection = [Self.composeTag(project)]
+                            tab = .logs
+                            Task { await model.composeUpService(project: project, service: service) }
+                        }
+                        .selectionDisabled()
                     }
-                    .tag(Self.composeTag(group.name))
                 }
-                ForEach(standalone) { ContainerListRow(container: $0).tag($0.id) }
             }
             .listStyle(.inset)
         }
     }
 
+    /// One visual row in the list: a compose-group header, a real container, or a
+    /// not-created compose service placeholder.
+    private enum Row: Identifiable {
+        case group(name: String, ref: ComposeProjectRef?)
+        case container(Container)
+        case placeholder(project: String, service: String, image: String?)
+
+        var id: String {
+            switch self {
+            case let .group(name, _): return ContainersListColumn.composeTag(name)
+            case let .container(c): return c.id
+            case let .placeholder(project, service, _): return "placeholder://\(project)/\(service)"
+            }
+        }
+    }
+
+    /// Flattened rows: each compose group's header, its children (when expanded), then standalone.
+    private var rows: [Row] {
+        var out: [Row] = []
+        for group in composeGroups {
+            out.append(.group(name: group.name, ref: group.ref))
+            guard expanded(group.name).wrappedValue else { continue }
+            for row in serviceRows(group.name) {
+                if let c = row.container { out.append(.container(c)) }
+                else { out.append(.placeholder(project: group.name, service: row.service, image: row.image)) }
+            }
+        }
+        out.append(contentsOf: standalone.map(Row.container))
+        return out
+    }
+
     /// Selection sentinel that makes the inspector show a compose project's detail
     /// (services + live log) instead of a single container.
-    static func composeTag(_ project: String) -> Container.ID { "compose://\(project)" }
+    nonisolated static func composeTag(_ project: String) -> Container.ID { "compose://\(project)" }
 
     private struct SvcRow: Identifiable { let id: String; let service: String; let image: String?; let container: Container? }
 
@@ -179,6 +208,7 @@ private struct ComposeServiceRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            Spacer().frame(width: 20)   // align under the group header, like real children
             Circle().fill(Color.secondary.opacity(0.4)).frame(width: 9, height: 9)
             VStack(alignment: .leading, spacing: 2) {
                 Text(service).font(.body.weight(.medium)).foregroundStyle(.secondary)
@@ -199,31 +229,41 @@ private struct ComposeServiceRow: View {
     }
 }
 
-/// A compose project's disclosure-group label: icon + name + count + Up / Down / Remove.
-private struct ComposeGroupLabel: View {
+/// A compose project's header row: chevron + icon + name + count + Up / Down / Remove.
+/// A normal List row (not a DisclosureGroup) for consistent full-width selection styling.
+private struct GroupHeaderRow: View {
     @Environment(AppModel.self) private var model
     let project: String
     let ref: ComposeProjectRef?
-    let onUp: (ComposeProjectRef) -> Void
+    @Binding var expanded: Bool
+    let onUp: () -> Void
 
     private var running: Int { model.containers(inProject: project).filter(\.isRunning).count }
     private var total: Int { model.services(forProject: project).count }
     private var hasContainers: Bool { !model.containers(inProject: project).isEmpty }
     private var busy: Bool { model.busyComposeProjects.contains(project) }
+    /// Every defined service is already running — nothing left to bring up.
+    private var allRunning: Bool { total > 0 && running == total }
 
     var body: some View {
         HStack(spacing: 8) {
+            Button { expanded.toggle() } label: {
+                Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(width: 12)
+            }
+            .buttonStyle(.plain)
+
             Image(systemName: "square.stack.3d.up.fill").foregroundStyle(.blue)
             Text(project).font(.body.weight(.semibold))
             if total > 0 {
                 Text("\(running)/\(total)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }
-            Spacer()
+            Spacer(minLength: 6)
             if busy {
                 ProgressView().controlSize(.small)
             } else {
-                if let ref {
-                    iconButton("play.fill", "Up (start all services)") { onUp(ref) }
+                if ref != nil, !allRunning {
+                    iconButton("play.fill", "Up (start all services)", action: onUp)
                         .disabled(!model.isSystemRunning)
                 }
                 if hasContainers {
@@ -235,11 +275,10 @@ private struct ComposeGroupLabel: View {
             }
         }
         .padding(.vertical, 4)
-        .buttonStyle(.borderless)
         .contentShape(Rectangle())
     }
 
-    private func iconButton(_ icon: String, _ help: String, _ action: @escaping () -> Void) -> some View {
+    private func iconButton(_ icon: String, _ help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: icon) }.buttonStyle(.borderless).help(help)
     }
 }
@@ -560,12 +599,14 @@ private struct DataSection: View {
 private struct ContainerListRow: View {
     @Environment(AppModel.self) private var model
     let container: Container
+    var indented = false
     @State private var hovering = false
 
     private var isBusy: Bool { model.busyContainerIDs.contains(container.id) }
 
     var body: some View {
         HStack(spacing: 10) {
+            if indented { Spacer().frame(width: 20) }   // nest compose children under their group header
             StatusDot(status: container.status)
             VStack(alignment: .leading, spacing: 2) {
                 Text(container.id).font(.body.weight(.medium))

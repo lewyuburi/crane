@@ -1,0 +1,6 @@
+{ "id":"keycloak","name":"Keycloak","tagline":"Open-source identity and access management (dev mode).",
+  "category":"Apps","logo":"keycloak","links":{"website":"https://www.keycloak.org"},"tags":["auth","security","sso"],"primaryPort":"PORT",
+  "variables":[
+    {"key":"ADMIN_USER","label":"Admin user","default":"admin"},
+    {"key":"ADMIN_PASSWORD","label":"Admin password","generate":"password:16","secret":true},
+    {"key":"PORT","label":"Host port","default":"8090"}] }

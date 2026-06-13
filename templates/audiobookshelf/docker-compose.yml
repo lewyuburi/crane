@@ -1,0 +1,14 @@
+services:
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    restart: unless-stopped
+    ports:
+      - "${PORT}:80"
+    volumes:
+      - abs-config:/config
+      - abs-metadata:/metadata
+      - abs-audiobooks:/audiobooks
+volumes:
+  abs-config:
+  abs-metadata:
+  abs-audiobooks:

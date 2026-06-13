@@ -1,0 +1,3 @@
+{ "id":"filebrowser","name":"File Browser","tagline":"A standalone web file manager for your server.",
+  "category":"Tools","logo":"filebrowser","links":{"website":"https://filebrowser.org"},"tags":["files","storage"],"primaryPort":"PORT",
+  "variables":[{"key":"PORT","label":"Host port","default":"8087"}] }
