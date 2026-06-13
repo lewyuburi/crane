@@ -28,15 +28,18 @@ jobs:
       # (CERT_P12_BASE64, CERT_PASSWORD, NOTARY_APPLE_ID, NOTARY_TEAM_ID, NOTARY_PASSWORD).
       # Without notarization the cask installs, but first launch needs right-click → Open.
 
-      - name: Zip the app
+      - name: Build DMG
         run: |
-          ditto -c -k --keepParent build/Crane.app Crane.zip
-          echo "SHA256=$(shasum -a 256 Crane.zip | awk '{print $1}')" >> "$GITHUB_ENV"
+          mkdir -p dmg
+          cp -R build/Crane.app dmg/
+          ln -s /Applications dmg/Applications            # drag-to-install target
+          hdiutil create -volname "Crane" -srcfolder dmg -ov -format UDZO Crane.dmg
+          echo "SHA256=$(shasum -a 256 Crane.dmg | awk '{print $1}')" >> "$GITHUB_ENV"
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: Crane.zip
+          files: Crane.dmg
           body: |
             ## Crane ${{ github.ref_name }}
 
@@ -47,4 +50,6 @@ jobs:
             brew install --cask lewyuburi/tap/crane
             ```
 
-            App SHA-256 (for the cask): `${{ env.SHA256 }}`
+            Or download `Crane.dmg` below and drag Crane to Applications.
+
+            DMG SHA-256 (for the cask): `${{ env.SHA256 }}`

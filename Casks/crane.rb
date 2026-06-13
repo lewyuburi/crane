@@ -4,7 +4,7 @@ cask "crane" do
   version "0.1.0"
   sha256 "REPLACE_WITH_RELEASE_SHA256"
 
-  url "https://github.com/lewyuburi/crane/releases/download/v#{version}/Crane.zip"
+  url "https://github.com/lewyuburi/crane/releases/download/v#{version}/Crane.dmg"
   name "Crane"
   desc "Native macOS GUI for Apple's container tool"
   homepage "https://github.com/lewyuburi/crane"
