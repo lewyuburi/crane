@@ -27,7 +27,12 @@ rm -rf "$ICONSET"
 swift Scripts/make-icon.swift "$ICONSET" >/dev/null
 iconutil -c icns "$ICONSET" -o "$CONTENTS/Resources/AppIcon.icns"
 
-cat > "$CONTENTS/Info.plist" <<'PLIST'
+# Single source of truth: the marketing version comes from CraneVersion.swift (which release.yml
+# stamps from the git tag), so the Info.plist and `crane --version` never drift apart.
+VERSION="$(grep -oE 'current = "[0-9][0-9.]*"' Sources/CraneKit/CraneVersion.swift | grep -oE '[0-9][0-9.]*')"
+echo "▸ Version $VERSION"
+
+cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -38,7 +43,7 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundleExecutable</key><string>Crane</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>26.0</string>
     <key>NSHighResolutionCapable</key><true/>
