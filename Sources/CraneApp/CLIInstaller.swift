@@ -86,12 +86,16 @@ enum CLIInstaller {
 
     private static func unlink(_ paths: [String]) throws {
         let fm = FileManager.default
-        let needAdmin = paths.contains { fm.fileExists(atPath: $0) && !fm.isDeletableFile(atPath: $0) }
+        guard let bundled = bundledCLI else { return }
+        // Only remove symlinks that point at *our* binary — never delete a foreign install.
+        let ours = paths.filter { (try? fm.destinationOfSymbolicLink(atPath: $0)) == bundled.path }
+        guard !ours.isEmpty else { return }
+        let needAdmin = ours.contains { !fm.isDeletableFile(atPath: $0) }
         if !needAdmin {
-            for path in paths { try? fm.removeItem(atPath: path) }
+            for path in ours { try? fm.removeItem(atPath: path) }
             return
         }
-        try runAdminShell(paths.map { "rm -f '\($0)'" }.joined(separator: "; "))
+        try runAdminShell(ours.map { "rm -f '\($0)'" }.joined(separator: "; "))
     }
 
     private static func runAdminShell(_ shell: String) throws {

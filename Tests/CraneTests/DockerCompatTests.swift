@@ -40,6 +40,18 @@ struct DockerCompatTests {
         #expect(DockerCompat.docker(["exec", "web", "ls", "-la"]).plan == .crane(["exec", "web", "ls", "-la"]))
     }
 
+    @Test func execPreservesFlagsThatBelongToTheCommand() {
+        // The `-i` here is grep's, not docker's — it must survive the translation.
+        #expect(DockerCompat.docker(["exec", "-t", "web", "grep", "-i", "pat", "f"]).plan
+                == .crane(["exec", "web", "grep", "-i", "pat", "f"]))
+    }
+
+    @Test func execWarnsOnUnsupportedEnvFlagAndSwallowsItsValue() {
+        let t = DockerCompat.docker(["exec", "-e", "K=V", "web", "sh"])
+        #expect(t.plan == .crane(["exec", "web", "sh"]))
+        #expect(t.warnings.contains { $0.contains("-e") })
+    }
+
     // MARK: - docker run flag translation
 
     @Test func runBasic() {
@@ -77,6 +89,22 @@ struct DockerCompatTests {
                 == .crane(["run", "-p", "8080:80", "nginx"]))
     }
 
+    @Test func runLongInlineForm() {
+        #expect(DockerCompat.docker(["run", "--publish=8080:80", "--name=web", "nginx"]).plan
+                == .crane(["run", "-p", "8080:80", "--name", "web", "nginx"]))
+    }
+
+    @Test func runWarnsOnInlineUnsupportedFlag() {
+        let t = DockerCompat.docker(["run", "--network=mynet", "nginx"])
+        #expect(t.plan == .crane(["run", "nginx"]))
+        #expect(t.warnings.contains { $0.contains("--network") })
+    }
+
+    @Test func runWarnsOnMissingValue() {
+        let t = DockerCompat.docker(["run", "-e"])
+        #expect(t.warnings.contains { $0.contains("-e") && $0.contains("missing") })
+    }
+
     @Test func runWarnsAndDropsUnsupportedAddHost() {
         let t = DockerCompat.docker(["run", "--add-host", "db:1.2.3.4", "nginx"])
         #expect(t.plan == .crane(["run", "nginx"]))
@@ -108,6 +136,22 @@ struct DockerCompatTests {
         #expect(DockerCompat.docker(["rmi", "a", "b"]).plan == .container(["image", "delete", "a", "b"]))
     }
 
+    @Test func imageRmMapsToImageDelete() {
+        #expect(DockerCompat.docker(["image", "rm", "a"]).plan == .container(["image", "delete", "a"]))
+    }
+
+    @Test func imageSubcommandsPassThrough() {
+        #expect(DockerCompat.docker(["image", "inspect", "nginx"]).plan
+                == .container(["image", "inspect", "nginx"]))
+    }
+
+    @Test func bareImageIsAnError() {
+        guard case .message(_, let isError) = DockerCompat.docker(["image"]).plan else {
+            Issue.record("expected a message"); return
+        }
+        #expect(isError)
+    }
+
     // MARK: - docker: honest messages
 
     @Test func emptyArgsShowsHelp() {
@@ -135,6 +179,15 @@ struct DockerCompatTests {
     @Test func composeUpWithFileForwardsPath() {
         #expect(DockerCompat.compose(["-f", "stack.yml", "up", "-d"]).plan == .crane(["up", "stack.yml"]))
         #expect(DockerCompat.compose(["up", "-f", "stack.yml"]).plan == .crane(["up", "stack.yml"]))
+    }
+
+    @Test func composeFileInlineForm() {
+        #expect(DockerCompat.compose(["--file=stack.yml", "up", "-d"]).plan == .crane(["up", "stack.yml"]))
+    }
+
+    @Test func composeUpWithoutDetachWarns() {
+        #expect(DockerCompat.compose(["up"]).warnings.isEmpty == false)
+        #expect(DockerCompat.compose(["up", "-d"]).warnings.isEmpty)   // detached: no surprise, no warning
     }
 
     @Test func composeDownMapsToCrane() {
