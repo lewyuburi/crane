@@ -35,15 +35,16 @@ struct DockerCompatTests {
         #expect(DockerCompat.docker(["rm", "a", "b"]).plan == .crane(["rm", "a", "b"]))
     }
 
-    @Test func execDropsInteractiveTtyAndKeepsCommand() {
-        #expect(DockerCompat.docker(["exec", "-it", "web", "sh"]).plan == .crane(["exec", "web", "sh"]))
+    @Test func execForwardsInteractiveTtyAndKeepsCommand() {
+        // -i/-t are forwarded (so a non-interactive exec gets no spurious TTY); command preserved.
+        #expect(DockerCompat.docker(["exec", "-it", "web", "sh"]).plan == .crane(["exec", "-i", "-t", "web", "sh"]))
         #expect(DockerCompat.docker(["exec", "web", "ls", "-la"]).plan == .crane(["exec", "web", "ls", "-la"]))
     }
 
     @Test func execPreservesFlagsThatBelongToTheCommand() {
-        // The `-i` here is grep's, not docker's — it must survive the translation.
+        // The trailing `-i` is grep's, not docker's — it must survive; the leading -t is docker's.
         #expect(DockerCompat.docker(["exec", "-t", "web", "grep", "-i", "pat", "f"]).plan
-                == .crane(["exec", "web", "grep", "-i", "pat", "f"]))
+                == .crane(["exec", "-t", "web", "grep", "-i", "pat", "f"]))
     }
 
     @Test func execWarnsOnUnsupportedEnvFlagAndSwallowsItsValue() {

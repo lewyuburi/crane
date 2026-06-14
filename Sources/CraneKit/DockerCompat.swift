@@ -228,20 +228,28 @@ public enum DockerCompat {
     /// the user's command (e.g. `grep -i`) are preserved. Crane's exec is always interactive.
     private static func translateExec(_ args: [String]) -> Translation {
         var warnings: [String] = []
+        var interactive = false
+        var tty = false
         var i = 0
         while i < args.count, args[i].hasPrefix("-") {
             let token = args[i]
             if let (flag, _) = splitInlineValue(token) {           // --env=K=V etc.
                 warnings.append(unsupportedFlagWarning(flag)); i += 1; continue
             }
-            if ["-i", "-t", "--interactive", "--tty"].contains(token) { i += 1; continue }  // no-ops
+            // Capture -i/-t so the request (or its absence) is forwarded, not assumed.
             if let cluster = expandShortCluster(token),
                cluster.allSatisfy({ ["-i", "-t", "-d"].contains($0) }) {
+                if cluster.contains("-i") { interactive = true }
+                if cluster.contains("-t") { tty = true }
                 if cluster.contains("-d") { warnings.append("ignored -d: crane exec runs in the foreground") }
                 i += 1; continue
             }
-            if token == "-d" || token == "--detach" {
+            switch token {
+            case "-i", "--interactive": interactive = true; i += 1; continue
+            case "-t", "--tty": tty = true; i += 1; continue
+            case "-d", "--detach":
                 warnings.append("ignored \(token): crane exec runs in the foreground"); i += 1; continue
+            default: break
             }
             if execValueFlags.contains(token) {
                 warnings.append(unsupportedFlagWarning(token))
@@ -250,7 +258,8 @@ public enum DockerCompat {
             }
             warnings.append("ignored unknown flag: \(token)"); i += 1
         }
-        return Translation(.crane(["exec"] + args[i...]), warnings: warnings)
+        let flags = (interactive ? ["-i"] : []) + (tty ? ["-t"] : [])
+        return Translation(.crane(["exec"] + flags + args[i...]), warnings: warnings)
     }
 
     // MARK: - docker logs

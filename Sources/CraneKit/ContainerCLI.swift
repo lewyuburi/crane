@@ -66,14 +66,21 @@ public actor ContainerCLI {
         public let environment: [String]
     }
 
-    public func execInvocation(id: String, command: [String]) async throws -> ExecInvocation {
+    /// Build a `container exec` invocation. `interactive`/`tty` default to true (the GUI terminal
+    /// always wants an interactive PTY); the CLI passes the user's actual `-i`/`-t` so a
+    /// non-interactive `docker exec web cat file` doesn't get a spurious TTY.
+    public func execInvocation(id: String, command: [String],
+                               interactive: Bool = true, tty: Bool = true) async throws -> ExecInvocation {
         guard let runtime = await runtimes.activeRuntime() else {
             throw ContainerCLIError.notInstalled
         }
         let env = Self.environment(for: runtime).map { "\($0.key)=\($0.value)" }
+        var flags: [String] = []
+        if interactive { flags.append("--interactive") }
+        if tty { flags.append("--tty") }
         return ExecInvocation(
             executable: runtime.binaryPath,
-            args: ["exec", "--interactive", "--tty", id] + command,
+            args: ["exec"] + flags + [id] + command,
             environment: env
         )
     }

@@ -157,11 +157,17 @@ struct Create: AsyncParsableCommand {
 struct Exec: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Run a command (default: a shell) in a running container.")
     @Argument(help: "Container id.") var id: String
-    @Argument(parsing: .remaining, help: "Command to run (default: /bin/sh).") var command: [String] = []
+    @Flag(name: .shortAndLong, help: "Keep STDIN open.") var interactive = false
+    @Flag(name: .shortAndLong, help: "Allocate a pseudo-TTY.") var tty = false
+    @Argument(parsing: .remaining, help: "Command to run (default: an interactive shell).") var command: [String] = []
 
     func run() async throws {
+        // No command means "give me a shell" → default to an interactive PTY. With an explicit
+        // command, honor only the requested -i/-t (matching `docker exec`'s non-TTY default).
+        let isShell = command.isEmpty
         let invocation = try await ContainerCLI.shared.execInvocation(
-            id: id, command: command.isEmpty ? ["/bin/sh"] : command)
+            id: id, command: isShell ? ["/bin/sh"] : command,
+            interactive: isShell || interactive, tty: isShell || tty)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: invocation.executable)
         process.arguments = invocation.args
