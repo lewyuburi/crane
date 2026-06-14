@@ -34,19 +34,34 @@ public struct ComposeEngine: Sendable {
             let network = project.isStack ? "default" : project.name
             emit(.log("▸ Network \(network)"))
             await cli.createNetworkIfNeeded(network)
+            // Create the project's named volumes too — a targeted `up` of a service that mounts one
+            // would otherwise fail on a fresh project (only the full-project path created them).
+            for vol in project.namedVolumes {
+                emit(.log("▸ Volume \(vol)"))
+                await cli.createVolumeIfNeeded(vol)
+            }
             await startService(service, project: project, emit: emit)
             emit(.log("Done."))
         }
     }
 
-    /// `docker compose down`: stop and remove every container in the project.
-    public func down(_ projectName: String) async {
-        let ids = ((try? await cli.listContainers()) ?? [])
-            .filter { $0.composeProject == projectName }.map(\.id).sorted()
+    /// `docker compose down`: stop and remove every container in the project. Returns a list of
+    /// human-readable failures (empty == clean teardown) so callers — the CLI and the app — can
+    /// report a real failure instead of silently succeeding when teardown didn't happen.
+    @discardableResult
+    public func down(_ projectName: String) async -> [String] {
+        var failures: [String] = []
+        let containers: [Container]
+        do { containers = try await cli.listContainers() }
+        catch { return ["couldn't list containers: \(error.localizedDescription)"] }
+
+        let ids = containers.filter { $0.composeProject == projectName }.map(\.id).sorted()
         for id in ids {
-            try? await cli.stop(id: id)
-            try? await cli.delete(id: id)
+            try? await cli.stop(id: id)   // best-effort: an already-stopped container can't re-stop
+            do { try await cli.delete(id: id) }
+            catch { failures.append("\(id): \(error.localizedDescription)") }
         }
+        return failures
     }
 
     // MARK: - Implementation

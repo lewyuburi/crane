@@ -5,8 +5,11 @@ import Foundation
 public struct RunSpec: Sendable {
     public var image: String = ""
     public var name: String = ""
-    /// Init-process arguments, space-separated (naive split — no shell quoting yet).
+    /// Init-process arguments, space-separated (naive split — used by the UI's single text field).
     public var command: String = ""
+    /// Pre-tokenized command arguments. When non-empty these are used verbatim instead of splitting
+    /// `command`, so arguments containing spaces (e.g. `sh -c "echo hi"`) aren't corrupted.
+    public var commandArgs: [String] = []
     public var detach: Bool = true
     public var removeOnExit: Bool = false
     /// "KEY=VALUE" entries.
@@ -17,13 +20,24 @@ public struct RunSpec: Sendable {
     public var volumes: [String] = []
     public var cpus: String = ""
     public var memory: String = ""
+    /// Keep stdin open (`--interactive`) / allocate a TTY (`--tty`). Honored detached or not.
+    public var interactive: Bool = false
+    public var tty: Bool = false
+    /// Already-formed `container run` flags forwarded verbatim (e.g. `--dns`, `--label`, `--mount`,
+    /// `--platform`) — lets the docker shim pass through options Apple supports without RunSpec
+    /// needing a dedicated field for each one.
+    public var extraArguments: [String] = []
 
     public init(image: String = "", name: String = "", command: String = "", detach: Bool = true,
                 removeOnExit: Bool = false, env: [String] = [], ports: [String] = [],
-                volumes: [String] = [], cpus: String = "", memory: String = "") {
+                volumes: [String] = [], cpus: String = "", memory: String = "",
+                interactive: Bool = false, tty: Bool = false, extraArguments: [String] = [],
+                commandArgs: [String] = []) {
         self.image = image; self.name = name; self.command = command; self.detach = detach
         self.removeOnExit = removeOnExit; self.env = env; self.ports = ports; self.volumes = volumes
         self.cpus = cpus; self.memory = memory
+        self.interactive = interactive; self.tty = tty; self.extraArguments = extraArguments
+        self.commandArgs = commandArgs
     }
 
     public var isValid: Bool {
@@ -35,6 +49,8 @@ public struct RunSpec: Sendable {
         var args: [String] = []
         if detach { args.append("--detach") }
         if removeOnExit { args.append("--rm") }
+        if interactive { args.append("--interactive") }
+        if tty { args.append("--tty") }
 
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         if !trimmedName.isEmpty { args += ["--name", trimmedName] }
@@ -54,8 +70,11 @@ public struct RunSpec: Sendable {
         let trimmedMemory = memory.trimmingCharacters(in: .whitespaces)
         if !trimmedMemory.isEmpty { args += ["--memory", trimmedMemory] }
 
+        args += extraArguments
+
         args.append(image.trimmingCharacters(in: .whitespaces))
-        args += command.split(separator: " ").map(String.init)
+        // Pre-tokenized args win (preserves quoting); else naive-split the single command string.
+        args += commandArgs.isEmpty ? command.split(separator: " ").map(String.init) : commandArgs
         return args
     }
 }

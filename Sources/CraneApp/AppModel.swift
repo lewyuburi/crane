@@ -309,14 +309,31 @@ final class AppModel {
     }
 
 
-    func composeDown(_ projectName: String) async {
+    /// Bring a project down (stop & delete its containers). Returns true if teardown was clean.
+    @discardableResult
+    func composeDown(_ projectName: String) async -> Bool {
         busyComposeProjects.insert(projectName)
         defer { busyComposeProjects.remove(projectName) }
         let ids = containers(inProject: projectName).map(\.id)
         busyContainerIDs.formUnion(ids)
         defer { busyContainerIDs.subtract(ids) }
-        await engine.down(projectName)
-        await refreshContainers()
+        let failures = await engine.down(projectName)
+        await refreshContainers()   // resets errorMessage on success, so report failures *after*
+        if !failures.isEmpty {
+            errorMessage = "Couldn't fully remove \(projectName): " + failures.joined(separator: "; ")
+        }
+        return failures.isEmpty
+    }
+
+    /// Fully remove a compose project from Crane: bring it down (stop & delete its containers) and
+    /// drop it from the tracked list. A group row is *derived state* — it shows as long as a
+    /// tracked ref or any member container exists — so a group action has to act on its elements;
+    /// untracking alone would leave the containers behind and the group would just reappear.
+    /// If teardown fails we keep the ref so the project stays a real (Up-able) group, not an
+    /// orphaned container-only one.
+    func deleteComposeProject(_ projectName: String, ref: ComposeProjectRef?) async {
+        let cleanedUp = await composeDown(projectName)
+        if cleanedUp, let ref { removeComposeProject(ref) }
     }
 
     // MARK: - Volumes / Networks / Storage

@@ -11,7 +11,8 @@ public protocol ContainerControlling: Sendable {
     func runContainer(_ spec: RunSpec) async throws
     func start(id: String) async throws
     func stop(id: String) async throws
-    func delete(id: String) async throws
+    /// Remove a container; `force` removes it even if running (`container delete --force`).
+    func delete(id: String, force: Bool) async throws
     func runDetached(arguments: [String]) async throws
     func createStopped(arguments: [String]) async throws
     @discardableResult func exec(id: String, command: [String]) async throws -> Data
@@ -36,6 +37,11 @@ public protocol ContainerControlling: Sendable {
     func deleteNetwork(name: String) async throws
 
     func diskUsage() async -> DiskUsage?
+}
+
+public extension ContainerControlling {
+    /// Convenience: non-forced removal — the common case.
+    func delete(id: String) async throws { try await delete(id: id, force: false) }
 }
 
 extension ContainerCLI: ContainerControlling {}

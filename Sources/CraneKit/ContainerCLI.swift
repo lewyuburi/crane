@@ -66,14 +66,21 @@ public actor ContainerCLI {
         public let environment: [String]
     }
 
-    public func execInvocation(id: String, command: [String]) async throws -> ExecInvocation {
+    /// Build a `container exec` invocation. `interactive`/`tty` default to true (the GUI terminal
+    /// always wants an interactive PTY); the CLI passes the user's actual `-i`/`-t` so a
+    /// non-interactive `docker exec web cat file` doesn't get a spurious TTY.
+    public func execInvocation(id: String, command: [String],
+                               interactive: Bool = true, tty: Bool = true) async throws -> ExecInvocation {
         guard let runtime = await runtimes.activeRuntime() else {
             throw ContainerCLIError.notInstalled
         }
         let env = Self.environment(for: runtime).map { "\($0.key)=\($0.value)" }
+        var flags: [String] = []
+        if interactive { flags.append("--interactive") }
+        if tty { flags.append("--tty") }
         return ExecInvocation(
             executable: runtime.binaryPath,
-            args: ["exec", "--interactive", "--tty", id] + command,
+            args: ["exec"] + flags + [id] + command,
             environment: env
         )
     }
@@ -92,6 +99,19 @@ public actor ContainerCLI {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: runtime.binaryPath)
         process.arguments = args
+        Self.configureEnvironment(for: runtime, on: process)
+        return process
+    }
+
+    /// A ready-to-run `container <arguments>` process that inherits the caller's stdio. Used by the
+    /// docker-compat shim to pass commands we don't wrap (build, pull, inspect…) straight through.
+    public func passthroughProcess(arguments: [String]) async throws -> Process {
+        guard let runtime = await runtimes.activeRuntime() else {
+            throw ContainerCLIError.notInstalled
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: runtime.binaryPath)
+        process.arguments = arguments
         Self.configureEnvironment(for: runtime, on: process)
         return process
     }
@@ -228,7 +248,9 @@ public actor ContainerCLI {
     public func start(id: String) async throws { try await run(["start", id]) }
     public func stop(id: String) async throws { try await run(["stop", id]) }
     public func kill(id: String) async throws { try await run(["kill", id]) }
-    public func delete(id: String) async throws { try await run(["delete", id]) }
+    public func delete(id: String, force: Bool = false) async throws {
+        try await run(["delete"] + (force ? ["--force"] : []) + [id])
+    }
 
     /// One stats sample for a container, or nil if unavailable.
     public func stats(id: String) async -> ContainerStats? {

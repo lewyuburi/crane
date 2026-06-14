@@ -40,6 +40,32 @@ cd crane
 
 `swift test` runs the test suite.
 
+## Command line
+
+Installing the app bundles a `crane` CLI (install it from **Settings → Runtimes → Command-line tool**):
+
+```sh
+crane ps            # list containers          crane up [path]      # compose up
+crane images        # list images              crane down           # compose down
+crane logs -f web   # follow a container's log crane templates      # list the app gallery
+crane run -p 8080:80 nginx                      crane deploy postgres
+```
+
+### Docker compatibility shim
+
+The same binary doubles as a `docker` / `docker-compose` drop-in (opt-in toggle in the same
+settings panel — it won't shadow a real Docker install without asking). It maps the common verbs
+onto Apple's runtime:
+
+```sh
+docker run -d --rm -p 8080:80 nginx
+docker compose -f stack.yml up -d
+docker build -t me:1 .          # passed through to `container build`
+```
+
+It's honest about the gaps: anything Apple's runtime can't do (`--add-host`, custom networks,
+multi-service `docker compose logs`) is reported with a clear warning rather than silently faked.
+
 ## How it works
 
 Crane shells out to the stable `container` CLI (with `--format json`) rather than its private XPC API, so it stays resilient across runtime upgrades. The container-orchestration logic lives in a UI-agnostic core (`ComposeEngine`, `ContainerControlling`, `ComposeParsing`) that's covered by tests and reusable headlessly.

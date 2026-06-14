@@ -52,7 +52,12 @@ actor FakeCLI: ContainerControlling {
         if let i = containers.firstIndex(where: { $0.id == id }) { containers[i].status = .running }
     }
     func stop(id: String) throws { stoppedIDs.append(id) }
-    func delete(id: String) throws { if failDeletes { throw Failure.boom }; deletedIDs.append(id) }
+    func delete(id: String, force: Bool) throws {
+        if failDeletes { throw Failure.boom }
+        deletedIDs.append(id)
+        if force { forcedDeletes.append(id) }
+    }
+    private(set) var forcedDeletes: [String] = []
     func setFailDeletes(_ f: Bool) { failDeletes = f }
     func runDetached(arguments: [String]) throws {
         if failOnRun { throw Failure.boom }
@@ -148,6 +153,53 @@ struct AppModelTests {
         await model.refreshContainers()
         await model.composeDown("stk")
         #expect(await fake.deletedIDs == ["stk-app", "stk-db"])  // sorted by id, project-scoped
+    }
+
+    @Test func deleteComposeProjectRemovesContainersAndUntracks() async {
+        let fake = FakeCLI()
+        await fake.setContainers([
+            Container(id: "stk-app", image: "a", status: .running, labels: ["com.docker.compose.project": "stk"]),
+            Container(id: "stk-db", image: "p", status: .running, labels: ["com.docker.compose.project": "stk"]),
+        ])
+        let model = AppModel(cli: fake)
+        await model.refreshContainers()
+        let ref = ComposeProjectRef(path: "/tmp/stk/docker-compose.yml", displayName: "stk", projectName: "stk")
+        model.composeProjects = [ref]
+
+        await model.deleteComposeProject("stk", ref: ref)
+
+        #expect(await fake.deletedIDs == ["stk-app", "stk-db"])  // acts on the elements
+        #expect(model.composeProjects.isEmpty)                    // and then untracks the group
+    }
+
+    @Test func deleteComposeProjectKeepsRefWhenTeardownFails() async {
+        let fake = FakeCLI()
+        await fake.setContainers([
+            Container(id: "stk-app", image: "a", status: .running, labels: ["com.docker.compose.project": "stk"]),
+        ])
+        await fake.setFailDeletes(true)   // teardown will fail
+        let model = AppModel(cli: fake)
+        await model.refreshContainers()
+        let ref = ComposeProjectRef(path: "/tmp/stk/docker-compose.yml", displayName: "stk", projectName: "stk")
+        model.composeProjects = [ref]
+
+        await model.deleteComposeProject("stk", ref: ref)
+
+        #expect(model.composeProjects.count == 1)   // still tracked → stays a real, Up-able group
+        #expect(model.errorMessage != nil)          // and the failure is surfaced to the user
+    }
+
+    @Test func deleteContainerOnlyComposeGroupJustRemovesContainers() async {
+        let fake = FakeCLI()
+        await fake.setContainers([
+            Container(id: "x-app", image: "a", status: .running, labels: ["com.docker.compose.project": "x"]),
+        ])
+        let model = AppModel(cli: fake)
+        await model.refreshContainers()
+
+        await model.deleteComposeProject("x", ref: nil)   // a group that exists only via its containers
+
+        #expect(await fake.deletedIDs == ["x-app"])
     }
 
     @Test func refreshPopulatesModelFromCLI() async {
