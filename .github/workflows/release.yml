@@ -21,6 +21,13 @@ jobs:
       - name: Select latest Xcode
         run: sudo xcode-select -switch /Applications/Xcode.app
 
+      - name: Stamp version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i.bak -E 's/current = "[^"]*"/current = "'"$VERSION"'"/' Sources/CraneKit/CraneVersion.swift
+          rm -f Sources/CraneKit/CraneVersion.swift.bak
+          grep current Sources/CraneKit/CraneVersion.swift
+
       - name: Test
         run: swift test
 

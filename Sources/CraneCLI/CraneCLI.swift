@@ -24,7 +24,7 @@ struct CraneCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "crane",
         abstract: "Manage Apple containers from the command line.",
-        version: "0.1.0",
+        version: CraneVersion.current,
         subcommands: [Ps.self, Images.self, Logs.self, Run.self, Create.self, Exec.self,
                       Start.self, Stop.self, Rm.self,
                       Up.self, Down.self, Templates.self, Deploy.self]
