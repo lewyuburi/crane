@@ -71,10 +71,12 @@ struct Logs: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Show a container's logs.")
     @Argument(help: "Container id.") var id: String
     @Flag(name: .shortAndLong, help: "Follow log output.") var follow = false
-    @Option(name: .shortAndLong, help: "Number of lines to show from the end.") var tail: Int = 200
+    @Option(name: .shortAndLong, help: "Lines to show from the end (0 or less = all).") var tail: Int = 200
 
     func run() async throws {
-        let process = try await ContainerCLI.shared.logProcess(id: id, follow: follow, tail: tail)
+        // tail <= 0 means "everything" (so the docker shim, which passes --tail 0 when the user
+        // didn't ask for a count, matches `docker logs`' show-all default instead of truncating).
+        let process = try await ContainerCLI.shared.logProcess(id: id, follow: follow, tail: tail > 0 ? tail : nil)
         try process.run()              // inherits stdout/stderr → streams to the terminal
         process.waitUntilExit()
         if process.terminationStatus != 0 { throw ExitCode(process.terminationStatus) }
@@ -140,7 +142,8 @@ struct Create: AsyncParsableCommand {
     @Option(name: [.customShort("l"), .long], help: "Add a key=value label.") var label: [String] = []
     @Option(name: .long, help: "Add a mount.") var mount: [String] = []
     @Option(name: .long, help: "Platform for a multi-platform image.") var platform: String = ""
-    // Accepted for `docker create` compatibility but no-ops here — a created container isn't started.
+    // `container create` accepts -i/-t (for a later attached start); -d is meaningless for create
+    // (nothing is started) and is accepted only so `docker create -d …` parses.
     @Flag(name: .shortAndLong) var detach = false
     @Flag(name: .shortAndLong) var interactive = false
     @Flag(name: .shortAndLong) var tty = false
@@ -222,9 +225,12 @@ struct Up: AsyncParsableCommand {
             help: "Only (re)create the given service (repeatable). Omit to start the whole project.")
     var services: [String] = []
     @Flag(name: .customLong("no-deps"), help: "Don't start linked services.") var noDeps = false
+    @Option(name: [.customShort("p"), .customLong("project-name")],
+            help: "Override the project name (network + labels).") var projectName: String = ""
 
     func run() async throws {
-        let project = try ComposeLoader.load(path)
+        var project = try ComposeLoader.load(path)
+        if !projectName.isEmpty { project.name = ProjectName.sanitize(projectName) }
         let engine = ComposeEngine(cli: ContainerCLI.shared)
         var failed = false
         func drain(_ stream: AsyncStream<ComposeEvent>) async {

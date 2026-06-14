@@ -186,6 +186,7 @@ struct AppModelTests {
         await model.deleteComposeProject("stk", ref: ref)
 
         #expect(model.composeProjects.count == 1)   // still tracked → stays a real, Up-able group
+        #expect(model.errorMessage != nil)          // and the failure is surfaced to the user
     }
 
     @Test func deleteContainerOnlyComposeGroupJustRemovesContainers() async {

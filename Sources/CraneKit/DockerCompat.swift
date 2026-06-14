@@ -161,20 +161,22 @@ public enum DockerCompat {
         let services = opts.filter { !$0.hasPrefix("-") }
         let detached = opts.contains("-d") || opts.contains("--detach")
 
+        // Compose flags we interpret; anything else is reported rather than silently dropped.
+        let knownUpFlags: Set<String> = ["-d", "--detach", "--no-deps"]
         switch sub {
         case "up":
             var warnings: [String] = []
-            if let projectName {
-                warnings.append("docker compose -p \(projectName) is ignored on up; "
-                    + "Crane derives the project name from the compose file.")
-            }
             if !detached {
                 warnings.append("docker compose up is attached in Docker; Crane starts the project, "
                     + "streams startup logs, then returns. Use `crane logs -f <container>` to keep following.")
             }
+            for flag in opts where flag.hasPrefix("-") && !knownUpFlags.contains(flag) {
+                warnings.append("docker compose up \(flag) is not supported and was ignored.")
+            }
             var out = ["up"]
             if let file { out.append(file) }
-            else if !services.isEmpty { out.append(".") }    // a path must precede --service options
+            else if !services.isEmpty || projectName != nil { out.append(".") }   // path precedes options
+            if let projectName { out += ["--project-name", projectName] }          // honor -p, like down
             for service in services { out += ["--service", service] }
             if opts.contains("--no-deps") { out.append("--no-deps") }
             return Translation(.crane(out), warnings: warnings)
@@ -240,32 +242,45 @@ public enum DockerCompat {
         var interactive = false
         var tty = false
         var i = 0
+        // Only the LEADING flags are docker's; the first bare token is the id, and everything after
+        // is the user's command (passed verbatim, so e.g. `grep -i` survives).
         while i < args.count, args[i].hasPrefix("-") {
             let token = args[i]
-            if let (flag, _) = splitInlineValue(token) {           // --env=K=V etc.
-                warnings.append(unsupportedFlagWarning(flag)); i += 1; continue
+            var consumedNext = false
+            if token.hasPrefix("--") {
+                let eq = token.firstIndex(of: "=")
+                let flag = eq.map { String(token[..<$0]) } ?? token
+                switch flag {
+                case "--interactive": interactive = true
+                case "--tty": tty = true
+                case "--detach": warnings.append("ignored --detach: crane exec runs in the foreground")
+                default:
+                    if execValueFlags.contains(flag) {
+                        warnings.append(unsupportedFlagWarning(flag))
+                        if eq == nil, i + 1 < args.count { consumedNext = true }
+                    } else { warnings.append("ignored unknown flag: \(flag)") }
+                }
+            } else {
+                let chars = Array(token.dropFirst())
+                var j = 0
+                clusterLoop: while j < chars.count {
+                    let f = "-\(chars[j])"
+                    switch f {
+                    case "-i": interactive = true; j += 1
+                    case "-t": tty = true; j += 1
+                    case "-d": warnings.append("ignored -d: crane exec runs in the foreground"); j += 1
+                    default:
+                        if execValueFlags.contains(f) {
+                            warnings.append(unsupportedFlagWarning(f))
+                            if chars[(j + 1)...].isEmpty, i + 1 < args.count { consumedNext = true }
+                            break clusterLoop   // value consumes the rest of the cluster
+                        }
+                        warnings.append("ignored unknown flag: \(f)"); j += 1
+                    }
+                }
             }
-            // Capture -i/-t so the request (or its absence) is forwarded, not assumed.
-            if let cluster = expandShortCluster(token),
-               cluster.allSatisfy({ ["-i", "-t", "-d"].contains($0) }) {
-                if cluster.contains("-i") { interactive = true }
-                if cluster.contains("-t") { tty = true }
-                if cluster.contains("-d") { warnings.append("ignored -d: crane exec runs in the foreground") }
-                i += 1; continue
-            }
-            switch token {
-            case "-i", "--interactive": interactive = true; i += 1; continue
-            case "-t", "--tty": tty = true; i += 1; continue
-            case "-d", "--detach":
-                warnings.append("ignored \(token): crane exec runs in the foreground"); i += 1; continue
-            default: break
-            }
-            if execValueFlags.contains(token) {
-                warnings.append(unsupportedFlagWarning(token))
-                if i + 1 < args.count { i += 1 }                   // swallow its value
-                i += 1; continue
-            }
-            warnings.append("ignored unknown flag: \(token)"); i += 1
+            if consumedNext { i += 1 }
+            i += 1
         }
         let flags = (interactive ? ["-i"] : []) + (tty ? ["-t"] : [])
         return Translation(.crane(["exec"] + flags + args[i...]), warnings: warnings)
@@ -290,6 +305,7 @@ public enum DockerCompat {
     private static func translateLogs(_ args: [String]) -> Translation {
         var out = ["logs"]
         var warnings: [String] = []
+        var sawTail = false
         var i = 0
         while i < args.count {
             let token = args[i]
@@ -297,7 +313,7 @@ public enum DockerCompat {
             case "-f", "--follow":
                 out.append("-f")
             case "-n", "--tail":                                  // docker's short for --tail is -n
-                if i + 1 < args.count { out += ["--tail", args[i + 1]]; i += 1 }
+                if i + 1 < args.count { out += ["--tail", args[i + 1]]; i += 1; sawTail = true }
             case "-t", "--timestamps":
                 // crane logs has no timestamps, and `-t` is its *tail* short — never forward it.
                 warnings.append("docker logs -t/--timestamps is not supported.")
@@ -307,13 +323,16 @@ public enum DockerCompat {
                 warnings.append("--details is not supported.")
             default:
                 if token.hasPrefix("--tail=") {
-                    out += ["--tail", String(token.dropFirst("--tail=".count))]
+                    out += ["--tail", String(token.dropFirst("--tail=".count))]; sawTail = true
                 } else {
                     out.append(token)   // the container id
                 }
             }
             i += 1
         }
+        // Docker shows the whole log by default; crane defaults to 200, so force "all" when the
+        // user didn't ask for a count.
+        if !sawTail { out += ["--tail", "0"] }
         return Translation(.crane(out), warnings: warnings)
     }
 
@@ -372,47 +391,56 @@ public enum DockerCompat {
             let token = args[i]
 
             // Once we've hit the image, everything after is the image's own command — pass verbatim.
-            if sawImage {
-                out.append(token); i += 1; continue
-            }
+            if sawImage { out.append(token); i += 1; continue }
 
-            // Split `--flag=value` and attached short forms like `-p8080:80`.
-            if let (flag, value) = splitInlineValue(token) {
-                if let mapped = runValueFlags[flag] {
-                    out += [mapped, value]
+            // Long form: --flag or --flag=value
+            if token.hasPrefix("--") {
+                let eq = token.firstIndex(of: "=")
+                let flag = eq.map { String(token[..<$0]) } ?? token
+                let inlineValue = eq.map { String(token[token.index(after: $0)...]) }
+                if let crane = runValueFlags[flag] {
+                    if let v = inlineValue { out += [crane, v] }
+                    else if i + 1 < args.count { out += [crane, args[i + 1]]; i += 1 }
+                    else { warnings.append("flag \(flag) is missing its value") }
                 } else if runUnsupportedValueFlags.contains(flag) {
                     warnings.append(unsupportedFlagWarning(flag))
-                } else {
+                    if inlineValue == nil, i + 1 < args.count { i += 1 }   // swallow its value
+                } else if let crane = runBoolFlags[flag] {
+                    out.append(crane)
+                } else if runUnsupportedBools.contains(flag) {
+                    warnings.append(unsupportedFlagWarning(flag))
+                } else if !runIgnoredBools.contains(flag) {
                     warnings.append("ignored unknown flag: \(flag)")
                 }
                 i += 1; continue
             }
 
-            if let mapped = runBoolFlags[token] {
-                out.append(mapped); i += 1; continue
-            }
-            if runUnsupportedBools.contains(token) {
-                warnings.append(unsupportedFlagWarning(token)); i += 1; continue
-            }
-            if runIgnoredBools.contains(token) { i += 1; continue }
-            if let expanded = expandShortCluster(token) {       // e.g. -it -> [-i, -t]
-                if expanded.allSatisfy({ runIgnoredBools.contains($0) || runBoolFlags[$0] != nil }) {
-                    for f in expanded { if let m = runBoolFlags[f] { out.append(m) } }
-                    i += 1; continue
+            // Short cluster: -abc. Per docker, only the LAST flag may take a value (the rest of the
+            // token, or the next arg). So -itm 512m → -i -t --memory 512m; -p8080:80 → -p 8080:80.
+            if token.hasPrefix("-"), token.count >= 2 {
+                let chars = Array(token.dropFirst())
+                var j = 0
+                var consumedNext = false
+                clusterLoop: while j < chars.count {
+                    let f = "-\(chars[j])"
+                    if let crane = runBoolFlags[f] { out.append(crane); j += 1; continue }
+                    if runUnsupportedBools.contains(f) { warnings.append(unsupportedFlagWarning(f)); j += 1; continue }
+                    if runIgnoredBools.contains(f) { j += 1; continue }
+                    let rest = String(chars[(j + 1)...])
+                    if let crane = runValueFlags[f] {
+                        if !rest.isEmpty { out += [crane, rest] }
+                        else if i + 1 < args.count { out += [crane, args[i + 1]]; consumedNext = true }
+                        else { warnings.append("flag \(f) is missing its value") }
+                        break clusterLoop
+                    }
+                    if runUnsupportedValueFlags.contains(f) {
+                        warnings.append(unsupportedFlagWarning(f))
+                        if rest.isEmpty, i + 1 < args.count { consumedNext = true }   // swallow value
+                        break clusterLoop
+                    }
+                    warnings.append("ignored unknown flag: \(f)"); j += 1
                 }
-            }
-            if let mapped = runValueFlags[token] {
-                if i + 1 < args.count { out += [mapped, args[i + 1]]; i += 1 }
-                else { warnings.append("flag \(token) is missing its value") }
-                i += 1; continue
-            }
-            if runUnsupportedValueFlags.contains(token) {
-                warnings.append(unsupportedFlagWarning(token))
-                if i + 1 < args.count { i += 1 }   // swallow its value
-                i += 1; continue
-            }
-            if token.hasPrefix("-") {
-                warnings.append("ignored unknown flag: \(token)")
+                if consumedNext { i += 1 }
                 i += 1; continue
             }
 
@@ -426,27 +454,6 @@ public enum DockerCompat {
     }
 
     // MARK: - flag helpers
-
-    /// `--name=web` → ("--name","web"); `-p8080:80` → ("-p","8080:80"). Returns nil if no inline value.
-    private static func splitInlineValue(_ token: String) -> (flag: String, value: String)? {
-        if token.hasPrefix("--"), let eq = token.firstIndex(of: "=") {
-            return (String(token[..<eq]), String(token[token.index(after: eq)...]))
-        }
-        // Attached short value: -pVALUE for the known value-taking short flags.
-        if token.hasPrefix("-"), !token.hasPrefix("--"), token.count > 2 {
-            let flag = String(token.prefix(2))
-            if runValueFlags[flag] != nil {
-                return (flag, String(token.dropFirst(2)))
-            }
-        }
-        return nil
-    }
-
-    /// `-it` → ["-i","-t"]; only for short clusters with no `=`.
-    private static func expandShortCluster(_ token: String) -> [String]? {
-        guard token.hasPrefix("-"), !token.hasPrefix("--"), token.count > 2 else { return nil }
-        return token.dropFirst().map { "-\($0)" }
-    }
 
     private static func unsupportedFlagWarning(_ flag: String) -> String {
         "ignored \(flag): not supported by Apple's container runtime"

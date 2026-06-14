@@ -23,8 +23,9 @@ struct DockerCompatTests {
     }
 
     @Test func logsTranslatesFollowAndTail() {
-        #expect(DockerCompat.docker(["logs", "web"]).plan == .crane(["logs", "web"]))
-        #expect(DockerCompat.docker(["logs", "-f", "web"]).plan == .crane(["logs", "-f", "web"]))
+        // No explicit count → --tail 0 (= all), matching docker's show-everything default.
+        #expect(DockerCompat.docker(["logs", "web"]).plan == .crane(["logs", "web", "--tail", "0"]))
+        #expect(DockerCompat.docker(["logs", "-f", "web"]).plan == .crane(["logs", "-f", "web", "--tail", "0"]))
         #expect(DockerCompat.docker(["logs", "--tail", "50", "web"]).plan
                 == .crane(["logs", "--tail", "50", "web"]))
     }
@@ -45,6 +46,13 @@ struct DockerCompatTests {
         // The trailing `-i` is grep's, not docker's — it must survive; the leading -t is docker's.
         #expect(DockerCompat.docker(["exec", "-t", "web", "grep", "-i", "pat", "f"]).plan
                 == .crane(["exec", "-t", "web", "grep", "-i", "pat", "f"]))
+    }
+
+    @Test func execClusterWithValueFlagDoesNotEatTheId() {
+        // -itu root web sh : -u (user) takes "root"; the id is `web`, command `sh` — not shifted.
+        let t = DockerCompat.docker(["exec", "-itu", "root", "web", "sh"])
+        #expect(t.plan == .crane(["exec", "-i", "-t", "web", "sh"]))
+        #expect(t.warnings.contains { $0.contains("-u") })
     }
 
     @Test func execWarnsOnUnsupportedEnvFlagAndSwallowsItsValue() {
@@ -84,6 +92,15 @@ struct DockerCompatTests {
         let t = DockerCompat.docker(["run", "-it", "alpine", "sh"])
         #expect(t.plan == .crane(["run", "-i", "-t", "alpine", "sh"]))
         #expect(t.warnings.isEmpty)
+    }
+
+    @Test func runClusterWithValueFlagLast() {
+        // -itm 512m : -i -t bools, then -m takes the next arg as its value.
+        #expect(DockerCompat.docker(["run", "-itm", "512m", "alpine"]).plan
+                == .crane(["run", "-i", "-t", "--memory", "512m", "alpine"]))
+        // -itm512m : the value is the remainder of the cluster.
+        #expect(DockerCompat.docker(["run", "-itm512m", "alpine"]).plan
+                == .crane(["run", "-i", "-t", "--memory", "512m", "alpine"]))
     }
 
     @Test func runConsumesUnsupportedValueFlag() {
@@ -211,8 +228,14 @@ struct DockerCompatTests {
         #expect(DockerCompat.docker(["logs", "--tail=50", "web"]).plan == .crane(["logs", "--tail", "50", "web"]))
         // -t is docker's timestamps, NOT crane's tail — must not be forwarded.
         let t = DockerCompat.docker(["logs", "-t", "web"])
-        #expect(t.plan == .crane(["logs", "web"]))
+        #expect(t.plan == .crane(["logs", "web", "--tail", "0"]))
         #expect(t.warnings.contains { $0.contains("timestamps") })
+    }
+
+    @Test func logsDefaultsToAllNotTruncated() {
+        // Docker shows the whole log by default; we force --tail 0 (= all) since crane defaults to 200.
+        #expect(DockerCompat.docker(["logs", "web"]).plan == .crane(["logs", "web", "--tail", "0"]))
+        #expect(DockerCompat.docker(["logs", "-f", "web"]).plan == .crane(["logs", "-f", "web", "--tail", "0"]))
     }
 
     @Test func runPrivilegedWarns() {
@@ -295,10 +318,15 @@ struct DockerCompatTests {
                 == .crane(["up", "s.yml", "--service", "worker", "--service", "db"]))
     }
 
-    @Test func composeUpWarnsWhenProjectNameOverridden() {
-        let t = DockerCompat.compose(["-p", "foo", "up", "-d"])
-        #expect(t.plan == .crane(["up"]))
-        #expect(t.warnings.contains { $0.contains("-p") })
+    @Test func composeUpHonorsProjectName() {
+        // -p is now honored on `up` too (symmetric with `down`), via crane up --project-name.
+        #expect(DockerCompat.compose(["-p", "foo", "up", "-d"]).plan
+                == .crane(["up", ".", "--project-name", "foo"]))
+    }
+
+    @Test func composeUpWarnsOnUnsupportedFlag() {
+        let t = DockerCompat.compose(["up", "--build", "-d"])
+        #expect(t.warnings.contains { $0.contains("--build") })   // not silently dropped
     }
 
     @Test func composeLogsIsHonestlyUnsupported() {

@@ -136,8 +136,10 @@ public actor RuntimeManager {
 
     private func resolveActiveRuntime() async -> Runtime? {
         let all = await discover()
-        // Prefer the shared suite; fall back to the legacy standard-domain key, and migrate it into
-        // the shared suite so the CLI (a different defaults domain) sees the GUI's old selection too.
+        // Prefer the shared suite; fall back to the legacy standard-domain key and migrate it into
+        // the shared suite. Note: a process only sees its OWN standard domain, so this migration
+        // fires from the GUI (which wrote the legacy key); once migrated, the CLI reads it from the
+        // shared suite. A user who upgrades and never reopens the GUI keeps the default until then.
         let shared = defaults.string(forKey: activeKey)
         let legacy = UserDefaults.standard.string(forKey: activeKey)
         if shared == nil, let legacy { defaults.set(legacy, forKey: activeKey) }
