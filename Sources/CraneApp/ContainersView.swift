@@ -238,6 +238,7 @@ private struct GroupHeaderRow: View {
     let ref: ComposeProjectRef?
     @Binding var expanded: Bool
     let onUp: () -> Void
+    @State private var confirmingDelete = false
 
     private var running: Int { model.containers(inProject: project).filter(\.isRunning).count }
     private var total: Int { model.services(forProject: project).count }
@@ -270,13 +271,23 @@ private struct GroupHeaderRow: View {
                 if hasContainers {
                     iconButton("stop.fill", "Down (stop & remove)") { Task { await model.composeDown(project) } }
                 }
-                if let ref {
-                    iconButton("trash", "Remove from list") { model.removeComposeProject(ref) }
+                if ref != nil || hasContainers {
+                    iconButton("trash", "Remove project") { confirmingDelete = true }
                 }
             }
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
+        .confirmationDialog("Remove “\(project)”?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Remove project", role: .destructive) {
+                Task { await model.deleteComposeProject(project, ref: ref) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(hasContainers
+                ? "This stops and deletes the project’s containers and removes it from Crane."
+                : "This removes the project from Crane.")
+        }
     }
 
     private func iconButton(_ icon: String, _ help: String, action: @escaping () -> Void) -> some View {

@@ -319,6 +319,15 @@ final class AppModel {
         await refreshContainers()
     }
 
+    /// Fully remove a compose project from Crane: bring it down (stop & delete its containers) and
+    /// drop it from the tracked list. A group row is *derived state* — it shows as long as a
+    /// tracked ref or any member container exists — so a group action has to act on its elements;
+    /// untracking alone would leave the containers behind and the group would just reappear.
+    func deleteComposeProject(_ projectName: String, ref: ComposeProjectRef?) async {
+        await composeDown(projectName)
+        if let ref { removeComposeProject(ref) }
+    }
+
     // MARK: - Volumes / Networks / Storage
 
     private func systemReady() async -> Bool {

@@ -150,6 +150,36 @@ struct AppModelTests {
         #expect(await fake.deletedIDs == ["stk-app", "stk-db"])  // sorted by id, project-scoped
     }
 
+    @Test func deleteComposeProjectRemovesContainersAndUntracks() async {
+        let fake = FakeCLI()
+        await fake.setContainers([
+            Container(id: "stk-app", image: "a", status: .running, labels: ["com.docker.compose.project": "stk"]),
+            Container(id: "stk-db", image: "p", status: .running, labels: ["com.docker.compose.project": "stk"]),
+        ])
+        let model = AppModel(cli: fake)
+        await model.refreshContainers()
+        let ref = ComposeProjectRef(path: "/tmp/stk/docker-compose.yml", displayName: "stk", projectName: "stk")
+        model.composeProjects = [ref]
+
+        await model.deleteComposeProject("stk", ref: ref)
+
+        #expect(await fake.deletedIDs == ["stk-app", "stk-db"])  // acts on the elements
+        #expect(model.composeProjects.isEmpty)                    // and then untracks the group
+    }
+
+    @Test func deleteContainerOnlyComposeGroupJustRemovesContainers() async {
+        let fake = FakeCLI()
+        await fake.setContainers([
+            Container(id: "x-app", image: "a", status: .running, labels: ["com.docker.compose.project": "x"]),
+        ])
+        let model = AppModel(cli: fake)
+        await model.refreshContainers()
+
+        await model.deleteComposeProject("x", ref: nil)   // a group that exists only via its containers
+
+        #expect(await fake.deletedIDs == ["x-app"])
+    }
+
     @Test func refreshPopulatesModelFromCLI() async {
         let fake = FakeCLI()
         await fake.setImages([ContainerImage(id: "i1", name: "nginx", tags: ["latest"], references: ["nginx:latest"], size: 100)])
