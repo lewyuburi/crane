@@ -2,14 +2,19 @@ import Foundation
 
 /// Installs the `crane` command-line tool (bundled inside Crane.app) onto the user's PATH by
 /// symlinking it into /usr/local/bin — like VS Code's "Install 'code' command" or OrbStack's `orb`.
+///
+/// The same binary is a multi-call tool: symlinked as `docker` / `docker-compose` it serves the
+/// Docker compatibility shim. Those aliases are opt-in and conflict-aware so they never silently
+/// shadow a real Docker install.
 enum CLIInstaller {
     static let symlinkPath = "/usr/local/bin/crane"
+    static let dockerAliasPaths = ["/usr/local/bin/docker", "/usr/local/bin/docker-compose"]
 
     enum Status: Equatable {
         case unavailable      // running unbundled (e.g. `swift run`) — no CLI to install
         case notInstalled
         case installed
-        case conflict(String) // a `crane` exists on PATH pointing somewhere else
+        case conflict(String) // a binary already exists on PATH pointing somewhere else
     }
 
     enum InstallError: LocalizedError {
@@ -29,38 +34,69 @@ enum CLIInstaller {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
-    static var status: Status {
-        guard let bundled = bundledCLI else { return .unavailable }
-        guard let dest = try? FileManager.default.destinationOfSymbolicLink(atPath: symlinkPath) else {
-            return FileManager.default.fileExists(atPath: symlinkPath) ? .conflict(symlinkPath) : .notInstalled
-        }
-        return dest == bundled.path ? .installed : .conflict(dest)
-    }
+    // MARK: - crane
+
+    static var status: Status { status(of: [symlinkPath]) }
 
     /// Symlink the bundled CLI onto PATH. Tries a plain symlink, falling back to an admin prompt
     /// when /usr/local/bin isn't user-writable (the common case on a fresh Mac).
-    static func install() throws {
+    static func install() throws { try link([symlinkPath]) }
+    static func uninstall() throws { try unlink([symlinkPath]) }
+
+    // MARK: - docker / docker-compose aliases
+
+    /// `.installed` only when *both* aliases point at our binary; `.conflict` if either points
+    /// elsewhere (e.g. a real Docker Desktop install) so we can warn instead of clobbering.
+    static var dockerAliasStatus: Status { status(of: dockerAliasPaths) }
+
+    static func installDockerAliases() throws { try link(dockerAliasPaths) }
+    static func uninstallDockerAliases() throws { try unlink(dockerAliasPaths) }
+
+    // MARK: - shared symlink machinery
+
+    private static func status(of paths: [String]) -> Status {
+        guard let bundled = bundledCLI else { return .unavailable }
+        let fm = FileManager.default
+        var allInstalled = true
+        for path in paths {
+            guard let dest = try? fm.destinationOfSymbolicLink(atPath: path) else {
+                if fm.fileExists(atPath: path) { return .conflict(path) }
+                allInstalled = false
+                continue
+            }
+            if dest != bundled.path { return .conflict(dest) }
+        }
+        return allInstalled ? .installed : .notInstalled
+    }
+
+    private static func link(_ paths: [String]) throws {
         guard let src = bundledCLI else { throw InstallError.unavailable }
         let fm = FileManager.default
         do {
-            try? fm.removeItem(atPath: symlinkPath)
-            try fm.createSymbolicLink(atPath: symlinkPath, withDestinationPath: src.path)
+            for path in paths {
+                try? fm.removeItem(atPath: path)
+                try fm.createSymbolicLink(atPath: path, withDestinationPath: src.path)
+            }
         } catch {
-            try installWithAdmin(src: src.path)
+            let dir = (paths[0] as NSString).deletingLastPathComponent
+            let cmds = ["mkdir -p '\(dir)'"] + paths.map { "ln -sf '\(src.path)' '\($0)'" }
+            try runAdminShell(cmds.joined(separator: " && "))
         }
     }
 
-    static func uninstall() throws {
+    private static func unlink(_ paths: [String]) throws {
         let fm = FileManager.default
-        if fm.isDeletableFile(atPath: symlinkPath), (try? fm.removeItem(atPath: symlinkPath)) != nil { return }
-        let osa = "do shell script \"rm -f '\(symlinkPath)'\" with administrator privileges"
-        try runOsascript(osa)
+        let needAdmin = paths.contains { fm.fileExists(atPath: $0) && !fm.isDeletableFile(atPath: $0) }
+        if !needAdmin {
+            for path in paths { try? fm.removeItem(atPath: path) }
+            return
+        }
+        try runAdminShell(paths.map { "rm -f '\($0)'" }.joined(separator: "; "))
     }
 
-    private static func installWithAdmin(src: String) throws {
-        let dir = (symlinkPath as NSString).deletingLastPathComponent
-        let shell = "mkdir -p '\(dir)' && ln -sf '\(src)' '\(symlinkPath)'"
-        try runOsascript("do shell script \"\(shell.replacingOccurrences(of: "\"", with: "\\\""))\" with administrator privileges")
+    private static func runAdminShell(_ shell: String) throws {
+        let escaped = shell.replacingOccurrences(of: "\"", with: "\\\"")
+        try runOsascript("do shell script \"\(escaped)\" with administrator privileges")
     }
 
     private static func runOsascript(_ script: String) throws {

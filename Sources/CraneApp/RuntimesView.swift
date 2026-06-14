@@ -52,6 +52,7 @@ struct RuntimesView: View {
 /// Install/remove the bundled `crane` CLI on the user's PATH.
 private struct CLISection: View {
     @State private var status = CLIInstaller.status
+    @State private var dockerStatus = CLIInstaller.dockerAliasStatus
     @State private var working = false
     @State private var error: String?
 
@@ -60,36 +61,75 @@ private struct CLISection: View {
             Text("Run the packaged Crane.app to install the `crane` command.")
                 .foregroundStyle(.secondary)
         } else {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("`crane` command-line tool").fontWeight(.medium)
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.middle)
-                }
-                Spacer()
-                if working {
-                    ProgressView().controlSize(.small)
-                } else if status == .installed {
-                    Button("Reinstall") { run(CLIInstaller.install) }
-                    Button(role: .destructive) { run(CLIInstaller.uninstall) } label: {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(.borderless).help("Remove crane from PATH")
-                } else {
-                    Button("Install") { run(CLIInstaller.install) }.buttonStyle(.borderedProminent)
-                }
-            }
+            craneRow
+            Divider()
+            dockerRow
             if let error {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
         }
     }
 
-    private var subtitle: String {
+    private var craneRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("`crane` command-line tool").fontWeight(.medium)
+                Text(craneSubtitle).font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            Spacer()
+            if working {
+                ProgressView().controlSize(.small)
+            } else if status == .installed {
+                Button("Reinstall") { run(CLIInstaller.install) }
+                Button(role: .destructive) { run(CLIInstaller.uninstall) } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless).help("Remove crane from PATH")
+            } else {
+                Button("Install") { run(CLIInstaller.install) }.buttonStyle(.borderedProminent)
+            }
+        }
+    }
+
+    @ViewBuilder private var dockerRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("`docker` / `docker-compose` compatibility").fontWeight(.medium)
+                Text(dockerSubtitle).font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(2).truncationMode(.middle)
+            }
+            Spacer()
+            if working {
+                ProgressView().controlSize(.small)
+            } else if dockerStatus == .installed {
+                Button(role: .destructive) { run(CLIInstaller.uninstallDockerAliases) } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless).help("Remove the docker aliases")
+            } else if case .conflict = dockerStatus {
+                Button("Replace") { run(CLIInstaller.installDockerAliases) }
+                    .help("Overwrite the existing docker on PATH")
+            } else {
+                Button("Install") { run(CLIInstaller.installDockerAliases) }
+            }
+        }
+    }
+
+    private var craneSubtitle: String {
         switch status {
         case .installed: return "Installed at \(CLIInstaller.symlinkPath)"
         case .notInstalled: return "Adds `crane` to your PATH (\(CLIInstaller.symlinkPath))."
         case .conflict(let path): return "A different `crane` is already on PATH: \(path)"
+        case .unavailable: return ""
+        }
+    }
+
+    private var dockerSubtitle: String {
+        switch dockerStatus {
+        case .installed: return "`docker` and `docker-compose` run through Crane."
+        case .notInstalled: return "Symlink `docker`/`docker-compose` to Crane's compat shim."
+        case .conflict(let path): return "Another docker is already on PATH: \(path)"
         case .unavailable: return ""
         }
     }
@@ -100,6 +140,7 @@ private struct CLISection: View {
             do { try await Task.detached { try action() }.value }
             catch { self.error = error.localizedDescription }
             status = CLIInstaller.status
+            dockerStatus = CLIInstaller.dockerAliasStatus
             working = false
         }
     }

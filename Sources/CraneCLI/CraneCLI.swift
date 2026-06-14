@@ -2,7 +2,24 @@ import ArgumentParser
 import CraneKit
 import Foundation
 
+/// Multi-call entry: one binary, three personalities chosen by how it was invoked. Symlinking the
+/// `crane` binary as `docker` / `docker-compose` (see CLIInstaller) makes those commands work too.
 @main
+struct CraneEntry {
+    static func main() async {
+        let invokedAs = (CommandLine.arguments.first as NSString?)?.lastPathComponent ?? "crane"
+        let args = Array(CommandLine.arguments.dropFirst())
+        switch invokedAs {
+        case "docker":
+            await DockerShim.run(DockerCompat.docker(args))
+        case "docker-compose":
+            await DockerShim.run(DockerCompat.compose(args))
+        default:
+            await CraneCommand.main(args)
+        }
+    }
+}
+
 struct CraneCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "crane",
@@ -69,11 +86,14 @@ struct Run: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Publish a port (host:container[/proto]).") var publish: [String] = []
     @Option(name: .shortAndLong, help: "Set an environment variable (KEY=VALUE).") var env: [String] = []
     @Option(name: .shortAndLong, help: "Bind-mount a volume (host:container).") var volume: [String] = []
+    @Option(name: .long, help: "Number of CPUs.") var cpus: String = ""
+    @Option(name: [.customShort("m"), .long], help: "Memory limit (e.g. 512m, 2g).") var memory: String = ""
     @Argument(parsing: .remaining, help: "Optional command to run.") var command: [String] = []
 
     func run() async throws {
         let spec = RunSpec(image: image, name: name, command: command.joined(separator: " "),
-                           detach: detach, removeOnExit: rm, env: env, ports: publish, volumes: volume)
+                           detach: detach, removeOnExit: rm, env: env, ports: publish, volumes: volume,
+                           cpus: cpus, memory: memory)
         try await ContainerCLI.shared.runContainer(spec)
         print("Started \(name.isEmpty ? image : name)")
     }
