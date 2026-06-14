@@ -25,7 +25,7 @@ struct CraneCommand: AsyncParsableCommand {
         commandName: "crane",
         abstract: "Manage Apple containers from the command line.",
         version: "0.1.0",
-        subcommands: [Ps.self, Images.self, Logs.self, Run.self, Exec.self,
+        subcommands: [Ps.self, Images.self, Logs.self, Run.self, Create.self, Exec.self,
                       Start.self, Stop.self, Rm.self,
                       Up.self, Down.self, Templates.self, Deploy.self]
     )
@@ -36,10 +36,12 @@ struct CraneCommand: AsyncParsableCommand {
 struct Ps: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "List containers.")
     @Flag(name: .shortAndLong, help: "Show stopped containers too.") var all = false
+    @Flag(name: .shortAndLong, help: "Only display container IDs.") var quiet = false
 
     func run() async throws {
         let containers = try await ContainerCLI.shared.listContainers()
         let rows = (all ? containers : containers.filter(\.isRunning)).sorted { $0.id < $1.id }
+        if quiet { for c in rows { print(c.id) }; return }   // machine-readable: `crane stop $(crane ps -q)`
         guard !rows.isEmpty else { print("No containers."); return }
         let width = rows.map(\.id.count).max() ?? 0
         for c in rows {
@@ -88,14 +90,55 @@ struct Run: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Bind-mount a volume (host:container).") var volume: [String] = []
     @Option(name: .long, help: "Number of CPUs.") var cpus: String = ""
     @Option(name: [.customShort("m"), .long], help: "Memory limit (e.g. 512m, 2g).") var memory: String = ""
+    @Flag(name: .shortAndLong, help: "Keep STDIN open even if not attached.") var interactive = false
+    @Flag(name: .shortAndLong, help: "Allocate a pseudo-TTY.") var tty = false
     @Argument(parsing: .remaining, help: "Optional command to run.") var command: [String] = []
 
     func run() async throws {
         let spec = RunSpec(image: image, name: name, command: command.joined(separator: " "),
                            detach: detach, removeOnExit: rm, env: env, ports: publish, volumes: volume,
                            cpus: cpus, memory: memory)
+        guard detach else {
+            // Foreground: inherit the terminal's stdio so the container's output (and an interactive
+            // TTY) reach the user, and mirror its exit code — matching `docker run` without -d.
+            var args = ["run"]
+            if interactive { args.append("--interactive") }
+            if tty { args.append("--tty") }
+            args += ContainerCLI.withDefaultDNS(spec.arguments())
+            let process = try await ContainerCLI.shared.passthroughProcess(arguments: args)
+            try process.run()
+            process.waitUntilExit()
+            if process.terminationStatus != 0 { throw ExitCode(process.terminationStatus) }
+            return
+        }
         try await ContainerCLI.shared.runContainer(spec)
         print("Started \(name.isEmpty ? image : name)")
+    }
+}
+
+struct Create: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Create a container without starting it.")
+    @Argument(help: "Image reference, e.g. docker.io/library/nginx:latest.") var image: String
+    @Option(name: .long, help: "Container name.") var name: String = ""
+    @Flag(help: "Remove the container on exit.") var rm = false
+    @Option(name: .shortAndLong, help: "Publish a port (host:container[/proto]).") var publish: [String] = []
+    @Option(name: .shortAndLong, help: "Set an environment variable (KEY=VALUE).") var env: [String] = []
+    @Option(name: .shortAndLong, help: "Bind-mount a volume (host:container).") var volume: [String] = []
+    @Option(name: .long, help: "Number of CPUs.") var cpus: String = ""
+    @Option(name: [.customShort("m"), .long], help: "Memory limit (e.g. 512m, 2g).") var memory: String = ""
+    // Accepted for `docker create` compatibility but irrelevant to create — a created container
+    // isn't started, so detach/interactive/tty are no-ops.
+    @Flag(name: .shortAndLong) var detach = false
+    @Flag(name: .shortAndLong) var interactive = false
+    @Flag(name: .shortAndLong) var tty = false
+    @Argument(parsing: .remaining, help: "Optional command to run.") var command: [String] = []
+
+    func run() async throws {
+        let spec = RunSpec(image: image, name: name, command: command.joined(separator: " "),
+                           detach: false, removeOnExit: rm, env: env, ports: publish, volumes: volume,
+                           cpus: cpus, memory: memory)
+        try await ContainerCLI.shared.createStopped(arguments: spec.arguments())
+        print("Created \(name.isEmpty ? image : name)")
     }
 }
 
@@ -137,9 +180,14 @@ struct Stop: AsyncParsableCommand {
 
 struct Rm: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Remove one or more containers.")
+    @Flag(name: .shortAndLong, help: "Stop a running container before removing it.") var force = false
     @Argument var ids: [String]
     func run() async throws {
-        for id in ids { try await ContainerCLI.shared.delete(id: id); print("Removed \(id)") }
+        for id in ids {
+            if force { try? await ContainerCLI.shared.stop(id: id) }   // docker rm -f stops first
+            try await ContainerCLI.shared.delete(id: id)
+            print("Removed \(id)")
+        }
     }
 }
 
@@ -149,14 +197,31 @@ struct Up: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Build, (re)create, and start a Compose project.")
     @Argument(help: "Path to a compose file or its directory (default: current directory).")
     var path: String = "."
+    @Option(name: .customLong("service"), parsing: .singleValue,
+            help: "Only (re)create the given service (repeatable). Omit to start the whole project.")
+    var services: [String] = []
 
     func run() async throws {
         let project = try ComposeLoader.load(path)
+        let engine = ComposeEngine(cli: ContainerCLI.shared)
         var failed = false
-        for await event in ComposeEngine(cli: ContainerCLI.shared).up(project) {
-            switch event {
-            case .log(let line): print(line)
-            case .failure(let message): failed = true; printError("✗ " + message)
+        func drain(_ stream: AsyncStream<ComposeEvent>) async {
+            for await event in stream {
+                switch event {
+                case .log(let line): print(line)
+                case .failure(let message): failed = true; printError("✗ " + message)
+                }
+            }
+        }
+        if services.isEmpty {
+            await drain(engine.up(project))
+        } else {
+            for name in services {
+                guard let service = project.startupOrder.first(where: { $0.name == name }) else {
+                    printError("✗ no such service: \(name)")
+                    throw ExitCode.failure
+                }
+                await drain(engine.up(service: service, in: project))
             }
         }
         if failed { throw ExitCode.failure }
