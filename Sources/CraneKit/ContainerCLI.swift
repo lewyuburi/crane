@@ -241,7 +241,9 @@ public actor ContainerCLI {
     public func start(id: String) async throws { try await run(["start", id]) }
     public func stop(id: String) async throws { try await run(["stop", id]) }
     public func kill(id: String) async throws { try await run(["kill", id]) }
-    public func delete(id: String) async throws { try await run(["delete", id]) }
+    public func delete(id: String, force: Bool = false) async throws {
+        try await run(["delete"] + (force ? ["--force"] : []) + [id])
+    }
 
     /// One stats sample for a container, or nil if unavailable.
     public func stats(id: String) async -> ContainerStats? {

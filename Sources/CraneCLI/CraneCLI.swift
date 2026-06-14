@@ -92,19 +92,24 @@ struct Run: AsyncParsableCommand {
     @Option(name: [.customShort("m"), .long], help: "Memory limit (e.g. 512m, 2g).") var memory: String = ""
     @Flag(name: .shortAndLong, help: "Keep STDIN open even if not attached.") var interactive = false
     @Flag(name: .shortAndLong, help: "Allocate a pseudo-TTY.") var tty = false
+    @Option(name: .long, help: "DNS nameserver IP.") var dns: [String] = []
+    @Option(name: .customLong("dns-search"), help: "DNS search domain.") var dnsSearch: [String] = []
+    @Option(name: .customLong("dns-option"), help: "DNS option.") var dnsOption: [String] = []
+    @Option(name: [.customShort("l"), .long], help: "Add a key=value label.") var label: [String] = []
+    @Option(name: .long, help: "Add a mount (type=…,source=…,target=…).") var mount: [String] = []
+    @Option(name: .long, help: "Platform for a multi-platform image.") var platform: String = ""
     @Argument(parsing: .remaining, help: "Optional command to run.") var command: [String] = []
 
     func run() async throws {
         let spec = RunSpec(image: image, name: name, command: command.joined(separator: " "),
                            detach: detach, removeOnExit: rm, env: env, ports: publish, volumes: volume,
-                           cpus: cpus, memory: memory)
+                           cpus: cpus, memory: memory, interactive: interactive, tty: tty,
+                           extraArguments: forwardedRunArgs(dns: dns, dnsSearch: dnsSearch,
+                               dnsOption: dnsOption, label: label, mount: mount, platform: platform))
         guard detach else {
             // Foreground: inherit the terminal's stdio so the container's output (and an interactive
             // TTY) reach the user, and mirror its exit code — matching `docker run` without -d.
-            var args = ["run"]
-            if interactive { args.append("--interactive") }
-            if tty { args.append("--tty") }
-            args += ContainerCLI.withDefaultDNS(spec.arguments())
+            let args = ["run"] + ContainerCLI.withDefaultDNS(spec.arguments())
             let process = try await ContainerCLI.shared.passthroughProcess(arguments: args)
             try process.run()
             process.waitUntilExit()
@@ -126,8 +131,13 @@ struct Create: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Bind-mount a volume (host:container).") var volume: [String] = []
     @Option(name: .long, help: "Number of CPUs.") var cpus: String = ""
     @Option(name: [.customShort("m"), .long], help: "Memory limit (e.g. 512m, 2g).") var memory: String = ""
-    // Accepted for `docker create` compatibility but irrelevant to create — a created container
-    // isn't started, so detach/interactive/tty are no-ops.
+    @Option(name: .long, help: "DNS nameserver IP.") var dns: [String] = []
+    @Option(name: .customLong("dns-search"), help: "DNS search domain.") var dnsSearch: [String] = []
+    @Option(name: .customLong("dns-option"), help: "DNS option.") var dnsOption: [String] = []
+    @Option(name: [.customShort("l"), .long], help: "Add a key=value label.") var label: [String] = []
+    @Option(name: .long, help: "Add a mount.") var mount: [String] = []
+    @Option(name: .long, help: "Platform for a multi-platform image.") var platform: String = ""
+    // Accepted for `docker create` compatibility but no-ops here — a created container isn't started.
     @Flag(name: .shortAndLong) var detach = false
     @Flag(name: .shortAndLong) var interactive = false
     @Flag(name: .shortAndLong) var tty = false
@@ -136,7 +146,9 @@ struct Create: AsyncParsableCommand {
     func run() async throws {
         let spec = RunSpec(image: image, name: name, command: command.joined(separator: " "),
                            detach: false, removeOnExit: rm, env: env, ports: publish, volumes: volume,
-                           cpus: cpus, memory: memory)
+                           cpus: cpus, memory: memory,
+                           extraArguments: forwardedRunArgs(dns: dns, dnsSearch: dnsSearch,
+                               dnsOption: dnsOption, label: label, mount: mount, platform: platform))
         try await ContainerCLI.shared.createStopped(arguments: spec.arguments())
         print("Created \(name.isEmpty ? image : name)")
     }
@@ -184,8 +196,7 @@ struct Rm: AsyncParsableCommand {
     @Argument var ids: [String]
     func run() async throws {
         for id in ids {
-            if force { try? await ContainerCLI.shared.stop(id: id) }   // docker rm -f stops first
-            try await ContainerCLI.shared.delete(id: id)
+            try await ContainerCLI.shared.delete(id: id, force: force)   // --force removes a running one
             print("Removed \(id)")
         }
     }
@@ -216,13 +227,12 @@ struct Up: AsyncParsableCommand {
         if services.isEmpty {
             await drain(engine.up(project))
         } else {
-            for name in services {
-                guard let service = project.startupOrder.first(where: { $0.name == name }) else {
-                    printError("✗ no such service: \(name)")
-                    throw ExitCode.failure
-                }
-                await drain(engine.up(service: service, in: project))
+            // Include transitive depends_on, in dependency-first order.
+            guard let targets = project.servicesToStart(named: services) else {
+                printError("✗ no such service in \(project.name)")
+                throw ExitCode.failure
             }
+            for service in targets { await drain(engine.up(service: service, in: project)) }
         }
         if failed { throw ExitCode.failure }
     }
@@ -298,4 +308,18 @@ struct Deploy: AsyncParsableCommand {
 
 private func printError(_ s: String) {
     FileHandle.standardError.write(Data((s + "\n").utf8))
+}
+
+/// Build the `container run` flags that Apple supports natively but Crane has no dedicated field
+/// for — forwarded verbatim by `run`/`create` so the docker shim doesn't have to drop them.
+private func forwardedRunArgs(dns: [String], dnsSearch: [String], dnsOption: [String],
+                             label: [String], mount: [String], platform: String) -> [String] {
+    var args: [String] = []
+    args += dns.flatMap { ["--dns", $0] }
+    args += dnsSearch.flatMap { ["--dns-search", $0] }
+    args += dnsOption.flatMap { ["--dns-option", $0] }
+    args += label.flatMap { ["--label", $0] }
+    args += mount.flatMap { ["--mount", $0] }
+    if !platform.isEmpty { args += ["--platform", platform] }
+    return args
 }

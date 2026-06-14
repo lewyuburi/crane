@@ -94,6 +94,29 @@ struct ComposeSpecTests {
         #expect(app.dependencies.isEmpty)  // short form carries no condition/required
     }
 
+    @Test func servicesToStartIncludesDependenciesInOrder() throws {
+        let yaml = """
+        services:
+          web:
+            image: web
+            depends_on: [api]
+          api:
+            image: api
+            depends_on: [db]
+          db:
+            image: postgres
+          extra:
+            image: extra
+        """
+        let project = try ComposeParsing.parse(yaml: yaml, baseDir: tmp)
+        // Targeting `web` must also bring up api + db (transitively), dependency-first, and NOT extra.
+        let names = try #require(project.servicesToStart(named: ["web"])).map(\.name)
+        #expect(names == ["db", "api", "web"])
+        #expect(!names.contains("extra"))
+        // Unknown service → nil (the CLI turns this into an error).
+        #expect(project.servicesToStart(named: ["nope"]) == nil)
+    }
+
     // MARK: restart
 
     @Test func parsesRestartPolicy() throws {

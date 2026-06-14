@@ -69,6 +69,20 @@ public struct ComposeProject: Sendable {
         for s in services { visit(s, [s.name]) }
         return resolved
     }
+
+    /// Services to (re)create for a targeted `up` of `requested`: the requested services plus their
+    /// transitive `depends_on`, returned in startup (dependency-first) order. Returns nil if any
+    /// requested name is unknown — so a targeted `up worker` brings up its `db` too, in order.
+    public func servicesToStart(named requested: [String]) -> [ComposeService]? {
+        let byName = Dictionary(uniqueKeysWithValues: services.map { ($0.name, $0) })
+        var needed = Set<String>()
+        var stack = requested
+        while let name = stack.popLast() {
+            guard let service = byName[name] else { return nil }   // unknown service requested
+            if needed.insert(name).inserted { stack.append(contentsOf: service.dependsOn) }
+        }
+        return startupOrder.filter { needed.contains($0.name) }
+    }
 }
 
 public struct ComposeService: Identifiable, Hashable, Sendable {

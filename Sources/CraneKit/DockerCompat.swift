@@ -48,7 +48,13 @@ public enum DockerCompat {
             var out = ["ps"]
             if shorts.contains("-a") || shorts.contains("--all") { out.append("-a") }
             if shorts.contains("-q") || shorts.contains("--quiet") { out.append("-q") }
-            return Translation(.crane(out))
+            // `-f/--filter` would narrow the result set; we can't apply it, so warn rather than
+            // silently returning *all* containers (which `docker stop $(docker ps -qf …)` would kill).
+            var warnings: [String] = []
+            if shorts.contains("-f") || shorts.contains("--filter") || rest.contains("--filter") {
+                warnings.append("docker ps --filter is not supported; returning the unfiltered list.")
+            }
+            return Translation(.crane(out), warnings: warnings)
 
         case "images":
             return Translation(.crane(["images"]))
@@ -94,8 +100,11 @@ public enum DockerCompat {
             return Translation(.container(["image", "push"] + rest))
         case "rmi":
             return Translation(.container(["image", "delete"] + rest))
-        case "inspect", "tag":
-            return Translation(.container([command] + rest))
+        case "inspect":
+            return Translation(.container(["inspect"] + rest))
+        case "tag":
+            // Apple exposes tagging as `container image tag`; top-level `container tag` doesn't exist.
+            return Translation(.container(["image", "tag"] + rest))
 
         case "compose":
             return compose(rest)
@@ -265,7 +274,9 @@ public enum DockerCompat {
 
     // MARK: - docker run / create
 
-    /// Flags that take a value and that we can honor (mapped to Crane's run options).
+    /// Flags that take a value and that we can honor (mapped to Crane's run options). The mapped
+    /// name is the `crane run` flag; flags Apple's `container run` supports natively (dns/label/
+    /// mount/platform) are forwarded too, not dropped.
     private static let runValueFlags: [String: String] = [
         "--name": "--name",
         "-p": "-p", "--publish": "-p",
@@ -273,6 +284,10 @@ public enum DockerCompat {
         "-v": "-v", "--volume": "-v",
         "--cpus": "--cpus",
         "-m": "--memory", "--memory": "--memory",
+        "--dns": "--dns", "--dns-search": "--dns-search", "--dns-option": "--dns-option",
+        "-l": "--label", "--label": "--label",
+        "--mount": "--mount",
+        "--platform": "--platform",
     ]
     /// Boolean flags we honor (interactive/tty are kept so foreground `crane run` can attach a TTY).
     private static let runBoolFlags: [String: String] = [
@@ -287,8 +302,8 @@ public enum DockerCompat {
     /// Kept broad on purpose: a value flag we *don't* list would have its value mistaken for the image.
     private static let runUnsupportedValueFlags: Set<String> = [
         "-w", "--workdir", "--network", "--net", "--entrypoint", "-u", "--user", "-h", "--hostname",
-        "--restart", "--add-host", "--env-file", "-l", "--label", "--label-file", "--link",
-        "--dns", "--dns-search", "--dns-option", "--platform", "--pull", "--gpus", "--mount",
+        "--restart", "--add-host", "--env-file", "--label-file", "--link",
+        "--pull", "--gpus",
         "--device", "--cap-add", "--cap-drop", "--tmpfs", "--memory-swap", "--shm-size",
         "--health-cmd", "--health-interval", "--health-timeout", "--health-retries",
         "--health-start-period", "--log-driver", "--log-opt", "--sysctl", "--ulimit",

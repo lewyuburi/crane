@@ -86,10 +86,17 @@ struct DockerCompatTests {
     }
 
     @Test func runConsumesUnsupportedValueFlag() {
-        // --platform takes a value; if we didn't consume it, "linux/amd64" would become the image.
-        let t = DockerCompat.docker(["run", "--platform", "linux/amd64", "nginx"])
+        // --gpus takes a value Apple can't honor; consume it so its value isn't read as the image.
+        let t = DockerCompat.docker(["run", "--gpus", "all", "nginx"])
         #expect(t.plan == .crane(["run", "nginx"]))
-        #expect(t.warnings.contains { $0.contains("--platform") })
+        #expect(t.warnings.contains { $0.contains("--gpus") })
+    }
+
+    @Test func runForwardsFlagsAppleSupports() {
+        // Apple's `container run` supports --dns/--label/--platform/--mount — forward, don't drop.
+        let t = DockerCompat.docker(["run", "--dns", "1.2.3.4", "-l", "a=b", "--platform", "linux/arm64", "nginx"])
+        #expect(t.plan == .crane(["run", "--dns", "1.2.3.4", "--label", "a=b", "--platform", "linux/arm64", "nginx"]))
+        #expect(t.warnings.isEmpty)
     }
 
     @Test func createRoutesToCraneCreateNotRun() {
@@ -172,6 +179,18 @@ struct DockerCompatTests {
     @Test func imageSubcommandsPassThrough() {
         #expect(DockerCompat.docker(["image", "inspect", "nginx"]).plan
                 == .container(["image", "inspect", "nginx"]))
+    }
+
+    @Test func tagMapsToImageTag() {
+        // Apple has no top-level `container tag`; it's `container image tag`.
+        #expect(DockerCompat.docker(["tag", "src:1", "dst:2"]).plan
+                == .container(["image", "tag", "src:1", "dst:2"]))
+    }
+
+    @Test func psFilterWarnsInsteadOfBroadening() {
+        let t = DockerCompat.docker(["ps", "-q", "--filter", "name=web"])
+        #expect(t.plan == .crane(["ps", "-q"]))
+        #expect(t.warnings.contains { $0.contains("filter") })
     }
 
     @Test func bareImageIsAnError() {
