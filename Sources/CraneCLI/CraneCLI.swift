@@ -53,9 +53,11 @@ struct Ps: AsyncParsableCommand {
 
 struct Images: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "List images.")
+    @Flag(name: .shortAndLong, help: "Only display image IDs.") var quiet = false
 
     func run() async throws {
         let images = try await ContainerCLI.shared.listImages()
+        if quiet { for img in images { print(img.id) }; return }   // for `docker rmi $(docker images -q)`
         guard !images.isEmpty else { print("No images."); return }
         let width = images.map(\.name.count).max() ?? 0
         for img in images.sorted(by: { $0.name < $1.name }) {
@@ -101,11 +103,12 @@ struct Run: AsyncParsableCommand {
     @Argument(parsing: .remaining, help: "Optional command to run.") var command: [String] = []
 
     func run() async throws {
-        let spec = RunSpec(image: image, name: name, command: command.joined(separator: " "),
+        let spec = RunSpec(image: image, name: name,
                            detach: detach, removeOnExit: rm, env: env, ports: publish, volumes: volume,
                            cpus: cpus, memory: memory, interactive: interactive, tty: tty,
                            extraArguments: forwardedRunArgs(dns: dns, dnsSearch: dnsSearch,
-                               dnsOption: dnsOption, label: label, mount: mount, platform: platform))
+                               dnsOption: dnsOption, label: label, mount: mount, platform: platform),
+                           commandArgs: command)
         guard detach else {
             // Foreground: inherit the terminal's stdio so the container's output (and an interactive
             // TTY) reach the user, and mirror its exit code — matching `docker run` without -d.
@@ -144,11 +147,12 @@ struct Create: AsyncParsableCommand {
     @Argument(parsing: .remaining, help: "Optional command to run.") var command: [String] = []
 
     func run() async throws {
-        let spec = RunSpec(image: image, name: name, command: command.joined(separator: " "),
+        let spec = RunSpec(image: image, name: name,
                            detach: false, removeOnExit: rm, env: env, ports: publish, volumes: volume,
-                           cpus: cpus, memory: memory,
+                           cpus: cpus, memory: memory, interactive: interactive, tty: tty,
                            extraArguments: forwardedRunArgs(dns: dns, dnsSearch: dnsSearch,
-                               dnsOption: dnsOption, label: label, mount: mount, platform: platform))
+                               dnsOption: dnsOption, label: label, mount: mount, platform: platform),
+                           commandArgs: command)
         try await ContainerCLI.shared.createStopped(arguments: spec.arguments())
         print("Created \(name.isEmpty ? image : name)")
     }
@@ -217,6 +221,7 @@ struct Up: AsyncParsableCommand {
     @Option(name: .customLong("service"), parsing: .singleValue,
             help: "Only (re)create the given service (repeatable). Omit to start the whole project.")
     var services: [String] = []
+    @Flag(name: .customLong("no-deps"), help: "Don't start linked services.") var noDeps = false
 
     func run() async throws {
         let project = try ComposeLoader.load(path)
@@ -233,8 +238,17 @@ struct Up: AsyncParsableCommand {
         if services.isEmpty {
             await drain(engine.up(project))
         } else {
-            // Include transitive depends_on, in dependency-first order.
-            guard let targets = project.servicesToStart(named: services) else {
+            // With --no-deps start only the named services; otherwise include transitive
+            // depends_on. Both in dependency-first (startupOrder) order.
+            let targets: [ComposeService]?
+            if noDeps {
+                let known = Set(project.services.map(\.name))
+                targets = services.allSatisfy(known.contains)
+                    ? project.startupOrder.filter { services.contains($0.name) } : nil
+            } else {
+                targets = project.servicesToStart(named: services)
+            }
+            guard let targets else {
                 printError("✗ no such service in \(project.name)")
                 throw ExitCode.failure
             }

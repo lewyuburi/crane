@@ -188,10 +188,48 @@ struct DockerCompatTests {
                 == .container(["image", "tag", "src:1", "dst:2"]))
     }
 
-    @Test func psFilterWarnsInsteadOfBroadening() {
-        let t = DockerCompat.docker(["ps", "-q", "--filter", "name=web"])
-        #expect(t.plan == .crane(["ps", "-q"]))
-        #expect(t.warnings.contains { $0.contains("filter") })
+    @Test func psFilterFailsClosed() {
+        // A stderr warning wouldn't stop `docker stop $(docker ps -qf …)`, so reject outright.
+        for args in [["ps", "-q", "--filter", "name=web"], ["ps", "--filter=name=web"], ["ps", "-qf", "x"]] {
+            guard case .message(_, let isError) = DockerCompat.docker(args).plan else {
+                Issue.record("expected an error for \(args)"); continue
+            }
+            #expect(isError)
+        }
+    }
+
+    @Test func imagesQuietAndFilter() {
+        #expect(DockerCompat.docker(["images", "-q"]).plan == .crane(["images", "-q"]))
+        guard case .message(_, let isError) = DockerCompat.docker(["images", "--filter", "dangling=true"]).plan else {
+            Issue.record("expected an error"); return
+        }
+        #expect(isError)
+    }
+
+    @Test func logsShortFlags() {
+        #expect(DockerCompat.docker(["logs", "-n", "50", "web"]).plan == .crane(["logs", "--tail", "50", "web"]))
+        #expect(DockerCompat.docker(["logs", "--tail=50", "web"]).plan == .crane(["logs", "--tail", "50", "web"]))
+        // -t is docker's timestamps, NOT crane's tail — must not be forwarded.
+        let t = DockerCompat.docker(["logs", "-t", "web"])
+        #expect(t.plan == .crane(["logs", "web"]))
+        #expect(t.warnings.contains { $0.contains("timestamps") })
+    }
+
+    @Test func runPrivilegedWarns() {
+        let t = DockerCompat.docker(["run", "--privileged", "nginx"])
+        #expect(t.plan == .crane(["run", "nginx"]))
+        #expect(t.warnings.contains { $0.contains("--privileged") })
+    }
+
+    @Test func composeUpNoDepsThreadsThrough() {
+        #expect(DockerCompat.compose(["up", "--no-deps", "web", "-d"]).plan
+                == .crane(["up", ".", "--service", "web", "--no-deps"]))
+    }
+
+    @Test func composeDownVolumesWarns() {
+        let t = DockerCompat.compose(["down", "-v"])
+        #expect(t.plan == .crane(["down"]))
+        #expect(t.warnings.contains { $0.contains("volumes") || $0.contains("-v") })
     }
 
     @Test func bareImageIsAnError() {

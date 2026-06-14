@@ -39,25 +39,28 @@ public enum DockerCompat {
 
         switch command {
         case "ps":
-            // Expand short clusters (`-aq`) so each flag is detected individually.
-            let shorts = Set(rest.flatMap { tok -> [String] in
-                if tok.hasPrefix("--") { return [tok] }
-                if tok.hasPrefix("-") { return tok.dropFirst().map { "-\($0)" } }
-                return []
-            })
+            let shorts = shortFlags(rest)
+            // `--filter` scopes the result; we can't apply it. Fail CLOSED — a stderr warning
+            // wouldn't stop `docker stop $(docker ps -qf …)` from acting on every container.
+            if hasFilter(rest, shorts) {
+                return Translation(.message(
+                    "docker ps --filter is not supported. Filter the output yourself "
+                    + "(e.g. `crane ps | grep …`) rather than relying on server-side filtering.",
+                    isError: true))
+            }
             var out = ["ps"]
             if shorts.contains("-a") || shorts.contains("--all") { out.append("-a") }
             if shorts.contains("-q") || shorts.contains("--quiet") { out.append("-q") }
-            // `-f/--filter` would narrow the result set; we can't apply it, so warn rather than
-            // silently returning *all* containers (which `docker stop $(docker ps -qf …)` would kill).
-            var warnings: [String] = []
-            if shorts.contains("-f") || shorts.contains("--filter") || rest.contains("--filter") {
-                warnings.append("docker ps --filter is not supported; returning the unfiltered list.")
-            }
-            return Translation(.crane(out), warnings: warnings)
+            return Translation(.crane(out))
 
         case "images":
-            return Translation(.crane(["images"]))
+            let shorts = shortFlags(rest)
+            if hasFilter(rest, shorts) {
+                return Translation(.message(
+                    "docker images --filter is not supported. Filter the output yourself.", isError: true))
+            }
+            let quiet = shorts.contains("-q") || shorts.contains("--quiet")
+            return Translation(.crane(["images"] + (quiet ? ["-q"] : [])))
 
         case "image":
             switch rest.first {
@@ -173,12 +176,18 @@ public enum DockerCompat {
             if let file { out.append(file) }
             else if !services.isEmpty { out.append(".") }    // a path must precede --service options
             for service in services { out += ["--service", service] }
+            if opts.contains("--no-deps") { out.append("--no-deps") }
             return Translation(.crane(out), warnings: warnings)
 
         case "down":
             // A project name (from -p) names the target directly; else fall back to the file/dir.
             let target = projectName ?? file
-            return Translation(.crane(["down"] + (target.map { [$0] } ?? [])))
+            var warnings: [String] = []
+            if opts.contains("-v") || opts.contains("--volumes") {
+                warnings.append("docker compose down -v/--volumes is not supported; "
+                    + "named volumes are kept. Remove them with `crane` volume tools if needed.")
+            }
+            return Translation(.crane(["down"] + (target.map { [$0] } ?? [])), warnings: warnings)
 
         case "logs":
             return Translation(.message(
@@ -264,21 +273,48 @@ public enum DockerCompat {
 
     // MARK: - docker logs
 
+    /// Expand short clusters (`-aq` → -a,-q), keeping long flags as-is. For detecting boolean flags.
+    private static func shortFlags(_ args: [String]) -> Set<String> {
+        Set(args.flatMap { tok -> [String] in
+            if tok.hasPrefix("--") { return [String(tok.prefix(while: { $0 != "=" }))] }
+            if tok.hasPrefix("-") { return tok.dropFirst().map { "-\($0)" } }
+            return []
+        })
+    }
+
+    private static func hasFilter(_ args: [String], _ shorts: Set<String>) -> Bool {
+        shorts.contains("-f") || shorts.contains("--filter")
+            || args.contains { $0.hasPrefix("--filter=") }
+    }
+
     private static func translateLogs(_ args: [String]) -> Translation {
         var out = ["logs"]
+        var warnings: [String] = []
         var i = 0
         while i < args.count {
-            switch args[i] {
+            let token = args[i]
+            switch token {
             case "-f", "--follow":
                 out.append("-f")
-            case "--tail":
+            case "-n", "--tail":                                  // docker's short for --tail is -n
                 if i + 1 < args.count { out += ["--tail", args[i + 1]]; i += 1 }
+            case "-t", "--timestamps":
+                // crane logs has no timestamps, and `-t` is its *tail* short — never forward it.
+                warnings.append("docker logs -t/--timestamps is not supported.")
+            case "--since", "--until":
+                warnings.append("\(token) is not supported."); if i + 1 < args.count { i += 1 }
+            case "--details":
+                warnings.append("--details is not supported.")
             default:
-                out.append(args[i])   // the container id (and we tolerate trailing positionals)
+                if token.hasPrefix("--tail=") {
+                    out += ["--tail", String(token.dropFirst("--tail=".count))]
+                } else {
+                    out.append(token)   // the container id
+                }
             }
             i += 1
         }
-        return Translation(.crane(out))
+        return Translation(.crane(out), warnings: warnings)
     }
 
     // MARK: - docker run / create
@@ -306,7 +342,9 @@ public enum DockerCompat {
         "-t": "-t", "--tty": "-t",
     ]
     /// Boolean flags that are simply no-ops here — dropped silently.
-    private static let runIgnoredBools: Set<String> = ["--init", "--privileged"]
+    private static let runIgnoredBools: Set<String> = ["--init"]
+    /// Boolean flags Apple can't honor — warn so the user knows the container won't behave as asked.
+    private static let runUnsupportedBools: Set<String> = ["--privileged"]
     /// Flags that take a value but Apple's runtime can't honor — consume the value, warn, drop.
     /// Kept broad on purpose: a value flag we *don't* list would have its value mistaken for the image.
     private static let runUnsupportedValueFlags: Set<String> = [
@@ -352,6 +390,9 @@ public enum DockerCompat {
 
             if let mapped = runBoolFlags[token] {
                 out.append(mapped); i += 1; continue
+            }
+            if runUnsupportedBools.contains(token) {
+                warnings.append(unsupportedFlagWarning(token)); i += 1; continue
             }
             if runIgnoredBools.contains(token) { i += 1; continue }
             if let expanded = expandShortCluster(token) {       // e.g. -it -> [-i, -t]

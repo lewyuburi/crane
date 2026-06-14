@@ -45,4 +45,23 @@ struct RunSpecTests {
         #expect(RunSpec(image: "  ").isValid == false)
         #expect(RunSpec(image: "alpine").isValid == true)
     }
+
+    @Test func commandArgsPreserveSpacesAndWinOverString() {
+        var spec = RunSpec(image: "alpine", commandArgs: ["sh", "-c", "echo hi"])
+        spec.detach = false
+        // "echo hi" stays a single argument — not split on the space.
+        #expect(spec.arguments() == ["alpine", "sh", "-c", "echo hi"])
+    }
+
+    @Test func interactiveAndTtyEmitFlags() {
+        var spec = RunSpec(image: "alpine", interactive: true, tty: true)
+        spec.detach = true
+        #expect(spec.arguments() == ["--detach", "--interactive", "--tty", "alpine"])
+    }
+
+    @Test func extraArgumentsForwardedBeforeImage() {
+        var spec = RunSpec(image: "nginx", extraArguments: ["--dns", "1.2.3.4"])
+        spec.detach = false
+        #expect(spec.arguments() == ["--dns", "1.2.3.4", "nginx"])
+    }
 }

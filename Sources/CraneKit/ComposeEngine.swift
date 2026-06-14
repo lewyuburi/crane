@@ -34,6 +34,12 @@ public struct ComposeEngine: Sendable {
             let network = project.isStack ? "default" : project.name
             emit(.log("▸ Network \(network)"))
             await cli.createNetworkIfNeeded(network)
+            // Create the project's named volumes too — a targeted `up` of a service that mounts one
+            // would otherwise fail on a fresh project (only the full-project path created them).
+            for vol in project.namedVolumes {
+                emit(.log("▸ Volume \(vol)"))
+                await cli.createVolumeIfNeeded(vol)
+            }
             await startService(service, project: project, emit: emit)
             emit(.log("Done."))
         }
