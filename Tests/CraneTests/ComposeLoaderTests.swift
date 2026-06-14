@@ -51,4 +51,16 @@ struct ComposeLoaderTests {
             try ComposeLoader.load("/no/such/path-xyz")
         }
     }
+
+    @Test func looksLikePathDistinguishesPathsFromProjectNames() {
+        // Path-like: should NOT be silently treated as a project name when it doesn't exist.
+        #expect(ComposeLoader.looksLikePath("./prod"))
+        #expect(ComposeLoader.looksLikePath("/abs/docker-compose.yml"))
+        #expect(ComposeLoader.looksLikePath("stack.yaml"))
+        #expect(ComposeLoader.looksLikePath("dir/sub"))
+        #expect(ComposeLoader.looksLikePath("~/projects/app"))
+        // Plain names: legitimate project identifiers.
+        #expect(!ComposeLoader.looksLikePath("prod"))
+        #expect(!ComposeLoader.looksLikePath("my-project_1"))
+    }
 }

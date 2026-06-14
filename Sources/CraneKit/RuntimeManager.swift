@@ -43,6 +43,13 @@ public actor RuntimeManager {
     private let fm = FileManager.default
     private let activeKey = "crane.activeRuntimePath"
 
+    /// A shared defaults suite so the GUI app and the standalone `crane` CLI agree on the active
+    /// runtime. `UserDefaults.standard` is per-bundle — the app writes under its own domain
+    /// (`dev.crane.Crane`), so the CLI, a different process with a different domain, wouldn't see
+    /// the user's pick and would fall back to the first discovered runtime. A named suite is a
+    /// plist both read; Crane isn't sandboxed, so no app-group entitlement is required.
+    private let defaults = UserDefaults(suiteName: "dev.crane.shared") ?? .standard
+
     /// Root for Crane-managed runtimes: ~/Library/Application Support/Crane/runtimes
     public var managedRoot: URL {
         fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -129,8 +136,10 @@ public actor RuntimeManager {
 
     private func resolveActiveRuntime() async -> Runtime? {
         let all = await discover()
-        if let saved = UserDefaults.standard.string(forKey: activeKey),
-           let match = all.first(where: { $0.binaryPath == saved }) {
+        // Prefer the shared suite; fall back to the legacy standard-domain key for migration.
+        let saved = defaults.string(forKey: activeKey)
+            ?? UserDefaults.standard.string(forKey: activeKey)
+        if let saved, let match = all.first(where: { $0.binaryPath == saved }) {
             return match
         }
         return all.first
@@ -140,7 +149,7 @@ public actor RuntimeManager {
     public func invalidate() { cachedActive = nil }
 
     public func setActive(_ runtime: Runtime) {
-        UserDefaults.standard.set(runtime.binaryPath, forKey: activeKey)
+        defaults.set(runtime.binaryPath, forKey: activeKey)
         cachedActive = runtime
     }
 

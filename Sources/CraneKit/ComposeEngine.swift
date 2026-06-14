@@ -39,14 +39,23 @@ public struct ComposeEngine: Sendable {
         }
     }
 
-    /// `docker compose down`: stop and remove every container in the project.
-    public func down(_ projectName: String) async {
-        let ids = ((try? await cli.listContainers()) ?? [])
-            .filter { $0.composeProject == projectName }.map(\.id).sorted()
+    /// `docker compose down`: stop and remove every container in the project. Returns a list of
+    /// human-readable failures (empty == clean teardown) so callers — the CLI and the app — can
+    /// report a real failure instead of silently succeeding when teardown didn't happen.
+    @discardableResult
+    public func down(_ projectName: String) async -> [String] {
+        var failures: [String] = []
+        let containers: [Container]
+        do { containers = try await cli.listContainers() }
+        catch { return ["couldn't list containers: \(error.localizedDescription)"] }
+
+        let ids = containers.filter { $0.composeProject == projectName }.map(\.id).sorted()
         for id in ids {
-            try? await cli.stop(id: id)
-            try? await cli.delete(id: id)
+            try? await cli.stop(id: id)   // best-effort: an already-stopped container can't re-stop
+            do { try await cli.delete(id: id) }
+            catch { failures.append("\(id): \(error.localizedDescription)") }
         }
+        return failures
     }
 
     // MARK: - Implementation

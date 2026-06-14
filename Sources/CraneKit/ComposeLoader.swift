@@ -30,4 +30,14 @@ public enum ComposeLoader {
         let yaml = try String(contentsOf: file, encoding: .utf8)
         return try ComposeParsing.parse(yaml: yaml, baseDir: file.deletingLastPathComponent())
     }
+
+    /// Whether `input` is meant as a filesystem path (vs. a bare project name). Lets callers that
+    /// accept both — like `crane down` — fail on a missing path instead of silently reinterpreting
+    /// `./prod` as the project name `prod` and acting on the wrong project.
+    public static func looksLikePath(_ input: String) -> Bool {
+        input.contains("/")
+            || input.hasPrefix("~")
+            || input.hasSuffix(".yml")
+            || input.hasSuffix(".yaml")
+    }
 }
