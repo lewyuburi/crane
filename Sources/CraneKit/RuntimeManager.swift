@@ -136,9 +136,12 @@ public actor RuntimeManager {
 
     private func resolveActiveRuntime() async -> Runtime? {
         let all = await discover()
-        // Prefer the shared suite; fall back to the legacy standard-domain key for migration.
-        let saved = defaults.string(forKey: activeKey)
-            ?? UserDefaults.standard.string(forKey: activeKey)
+        // Prefer the shared suite; fall back to the legacy standard-domain key, and migrate it into
+        // the shared suite so the CLI (a different defaults domain) sees the GUI's old selection too.
+        let shared = defaults.string(forKey: activeKey)
+        let legacy = UserDefaults.standard.string(forKey: activeKey)
+        if shared == nil, let legacy { defaults.set(legacy, forKey: activeKey) }
+        let saved = shared ?? legacy
         if let saved, let match = all.first(where: { $0.binaryPath == saved }) {
             return match
         }

@@ -39,8 +39,16 @@ public enum DockerCompat {
 
         switch command {
         case "ps":
-            let all = rest.contains("-a") || rest.contains("--all")
-            return Translation(.crane(all ? ["ps", "-a"] : ["ps"]))
+            // Expand short clusters (`-aq`) so each flag is detected individually.
+            let shorts = Set(rest.flatMap { tok -> [String] in
+                if tok.hasPrefix("--") { return [tok] }
+                if tok.hasPrefix("-") { return tok.dropFirst().map { "-\($0)" } }
+                return []
+            })
+            var out = ["ps"]
+            if shorts.contains("-a") || shorts.contains("--all") { out.append("-a") }
+            if shorts.contains("-q") || shorts.contains("--quiet") { out.append("-q") }
+            return Translation(.crane(out))
 
         case "images":
             return Translation(.crane(["images"]))
@@ -57,18 +65,26 @@ public enum DockerCompat {
         case "logs":
             return translateLogs(rest)
 
-        case "run", "create":
-            return translateRun(rest)
+        case "run":
+            return translateRun(rest, verb: "run")
+        case "create":
+            // `docker create` must NOT start the container — route to `crane create` (created/stopped),
+            // never to the `run` path which would start it immediately.
+            return translateRun(rest, verb: "create")
 
         case "exec":
             return translateExec(rest)
 
-        case "start", "stop":
-            let ids = rest.filter { !$0.hasPrefix("-") }
-            return Translation(.crane([command] + ids))
+        case "start":
+            return Translation(.crane(["start"] + collectIDs(rest, valueFlags: ["--detach-keys"])))
+        case "stop":
+            // `-t/--timeout` and `-s/--signal` take a value — consume it so it isn't read as an id.
+            return Translation(.crane(["stop"] + collectIDs(rest, valueFlags: ["-t", "--timeout", "-s", "--signal"])))
         case "rm":
-            let ids = rest.filter { !$0.hasPrefix("-") }
-            return Translation(.crane(["rm"] + ids))
+            // `-f/--force` removes a running container; thread it through so `crane rm` stops first.
+            let force = rest.contains("-f") || rest.contains("--force")
+            let ids = collectIDs(rest, valueFlags: [])
+            return Translation(.crane(["rm"] + (force ? ["-f"] : []) + ids))
 
         case "build":
             return Translation(.container(["build"] + rest))
@@ -102,46 +118,59 @@ public enum DockerCompat {
 
     /// `argv` is everything after `docker compose` (or after `docker-compose`).
     public static func compose(_ argv: [String]) -> Translation {
-        // -f/--file and the subcommand can appear in either order; pull the file out first.
+        // -f/--file and -p/--project-name can appear before or after the subcommand; pull them out.
         var file: String?
-        var positional: [String] = []
+        var projectName: String?
+        var rest: [String] = []
         var i = 0
         while i < argv.count {
             let token = argv[i]
-            // Inline form: --file=stack.yml / -f=stack.yml / --project-name=foo.
-            if token.hasPrefix("-"), let eq = token.firstIndex(of: "=") {
+            if token.hasPrefix("-"), let eq = token.firstIndex(of: "=") {      // inline --file=x
                 let flag = String(token[..<eq]), value = String(token[token.index(after: eq)...])
                 if flag == "-f" || flag == "--file" { file = value }
+                else if flag == "-p" || flag == "--project-name" { projectName = value }
                 i += 1; continue
             }
             switch token {
             case "-f", "--file":
                 if i + 1 < argv.count { file = argv[i + 1]; i += 1 }
             case "-p", "--project-name":
-                if i + 1 < argv.count { i += 1 }   // accepted but unused; we derive the name
+                if i + 1 < argv.count { projectName = argv[i + 1]; i += 1 }
             default:
-                positional.append(token)
+                rest.append(token)
             }
             i += 1
         }
 
-        guard let sub = positional.first else {
+        guard let sub = rest.first else {
             return Translation(.message(composeHelp, isError: false))
         }
-        let tail = file.map { [$0] } ?? []
+        let opts = Array(rest.dropFirst())                       // -d, --build, and SERVICE names
+        let services = opts.filter { !$0.hasPrefix("-") }
+        let detached = opts.contains("-d") || opts.contains("--detach")
 
         switch sub {
         case "up":
-            // Apple's runtime has no foreground/attached run; `crane up` starts the project, streams
-            // startup logs, then returns. Warn unless the user already asked for detached (`-d`).
             var warnings: [String] = []
-            if !positional.contains("-d"), !positional.contains("--detach") {
+            if let projectName {
+                warnings.append("docker compose -p \(projectName) is ignored on up; "
+                    + "Crane derives the project name from the compose file.")
+            }
+            if !detached {
                 warnings.append("docker compose up is attached in Docker; Crane starts the project, "
                     + "streams startup logs, then returns. Use `crane logs -f <container>` to keep following.")
             }
-            return Translation(.crane(["up"] + tail), warnings: warnings)
+            var out = ["up"]
+            if let file { out.append(file) }
+            else if !services.isEmpty { out.append(".") }    // a path must precede --service options
+            for service in services { out += ["--service", service] }
+            return Translation(.crane(out), warnings: warnings)
+
         case "down":
-            return Translation(.crane(["down"] + tail))
+            // A project name (from -p) names the target directly; else fall back to the file/dir.
+            let target = projectName ?? file
+            return Translation(.crane(["down"] + (target.map { [$0] } ?? [])))
+
         case "logs":
             return Translation(.message(
                 "docker compose logs: not supported — Apple's runtime has no multi-service log "
@@ -159,6 +188,23 @@ public enum DockerCompat {
             return Translation(.message(
                 "docker compose \(sub): not supported by Crane's compatibility shim.", isError: true))
         }
+    }
+
+    /// Collect positional ids from `args`, skipping flags. For flags in `valueFlags`, also skip the
+    /// following value token so `docker stop -t 30 web` doesn't read `30` as a container id.
+    private static func collectIDs(_ args: [String], valueFlags: Set<String>) -> [String] {
+        var ids: [String] = []
+        var i = 0
+        while i < args.count {
+            let token = args[i]
+            if token.hasPrefix("-") {
+                if valueFlags.contains(token) { i += 2; continue }   // flag + its value
+                i += 1; continue                                     // bool flag or inline --x=y
+            }
+            ids.append(token)
+            i += 1
+        }
+        return ids
     }
 
     // MARK: - docker exec
@@ -217,7 +263,7 @@ public enum DockerCompat {
         return Translation(.crane(out))
     }
 
-    // MARK: - docker run
+    // MARK: - docker run / create
 
     /// Flags that take a value and that we can honor (mapped to Crane's run options).
     private static let runValueFlags: [String: String] = [
@@ -228,24 +274,34 @@ public enum DockerCompat {
         "--cpus": "--cpus",
         "-m": "--memory", "--memory": "--memory",
     ]
-    /// Boolean flags we honor.
+    /// Boolean flags we honor (interactive/tty are kept so foreground `crane run` can attach a TTY).
     private static let runBoolFlags: [String: String] = [
         "-d": "-d", "--detach": "-d",
         "--rm": "--rm",
+        "-i": "-i", "--interactive": "-i",
+        "-t": "-t", "--tty": "-t",
     ]
-    /// Boolean flags that are simply no-ops here (a TTY is attached as needed) — dropped silently.
-    private static let runIgnoredBools: Set<String> = [
-        "-i", "-t", "--interactive", "--tty", "--init",
-    ]
+    /// Boolean flags that are simply no-ops here — dropped silently.
+    private static let runIgnoredBools: Set<String> = ["--init", "--privileged"]
     /// Flags that take a value but Apple's runtime can't honor — consume the value, warn, drop.
+    /// Kept broad on purpose: a value flag we *don't* list would have its value mistaken for the image.
     private static let runUnsupportedValueFlags: Set<String> = [
-        "-w", "--workdir", "--network", "--net", "--entrypoint", "-u", "--user",
-        "-h", "--hostname", "--restart", "--add-host", "--env-file", "-l", "--label",
-        "--label-file", "--link", "--dns-search",
+        "-w", "--workdir", "--network", "--net", "--entrypoint", "-u", "--user", "-h", "--hostname",
+        "--restart", "--add-host", "--env-file", "-l", "--label", "--label-file", "--link",
+        "--dns", "--dns-search", "--dns-option", "--platform", "--pull", "--gpus", "--mount",
+        "--device", "--cap-add", "--cap-drop", "--tmpfs", "--memory-swap", "--shm-size",
+        "--health-cmd", "--health-interval", "--health-timeout", "--health-retries",
+        "--health-start-period", "--log-driver", "--log-opt", "--sysctl", "--ulimit",
+        "--volumes-from", "--pid", "--ipc", "--uts", "--userns", "--runtime", "--stop-signal",
+        "--stop-timeout", "--storage-opt", "--ip", "--ip6", "--mac-address", "--expose",
+        "--network-alias", "--link-local-ip", "--cidfile", "--cpu-shares", "--cpu-period",
+        "--cpu-quota", "--cpuset-cpus", "--cpuset-mems", "--blkio-weight", "--memory-reservation",
+        "--oom-score-adj", "--group-add", "--security-opt", "--isolation", "--volume-driver",
+        "--detach-keys", "-a", "--attach", "--annotation", "--pids-limit",
     ]
 
-    private static func translateRun(_ args: [String]) -> Translation {
-        var out = ["run"]
+    private static func translateRun(_ args: [String], verb: String) -> Translation {
+        var out = [verb]
         var warnings: [String] = []
         var sawImage = false
         var i = 0
@@ -336,13 +392,13 @@ public enum DockerCompat {
     private static let dockerHelp = """
     Crane docker-compat shim — maps common `docker` commands onto Apple's `container`.
 
-    Supported: ps, images, run, exec, logs, start, stop, rm, build, pull, push, rmi, compose.
+    Supported: ps, images, run, create, exec, logs, start, stop, rm, build, pull, push, rmi, compose.
     Unsupported docker features (custom networks, --add-host, swarm) are reported, not faked.
     Run `crane --help` for the native commands.
     """
 
     private static let composeHelp = """
-    Crane docker-compose shim. Supported: up [-f file], down [-f file].
+    Crane docker-compose shim. Supported: up [-f file] [SERVICE…], down [-f file | -p name].
     For per-service logs/exec use `crane ps` then `crane logs`/`crane exec <container>`.
     """
 }

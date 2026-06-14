@@ -78,10 +78,39 @@ struct DockerCompatTests {
                 == .crane(["run", "--rm", "alpine", "echo", "hi"]))
     }
 
-    @Test func runDropsInteractiveTtyClusterSilently() {
+    @Test func runPreservesInteractiveTtyCluster() {
+        // -i/-t are kept so foreground `crane run` can attach a real TTY (not silently dropped).
         let t = DockerCompat.docker(["run", "-it", "alpine", "sh"])
-        #expect(t.plan == .crane(["run", "alpine", "sh"]))
-        #expect(t.warnings.isEmpty)   // -i/-t are not errors, just no-ops here
+        #expect(t.plan == .crane(["run", "-i", "-t", "alpine", "sh"]))
+        #expect(t.warnings.isEmpty)
+    }
+
+    @Test func runConsumesUnsupportedValueFlag() {
+        // --platform takes a value; if we didn't consume it, "linux/amd64" would become the image.
+        let t = DockerCompat.docker(["run", "--platform", "linux/amd64", "nginx"])
+        #expect(t.plan == .crane(["run", "nginx"]))
+        #expect(t.warnings.contains { $0.contains("--platform") })
+    }
+
+    @Test func createRoutesToCraneCreateNotRun() {
+        // docker create must not start the container — it maps to `crane create`, never `crane run`.
+        #expect(DockerCompat.docker(["create", "--name", "db", "postgres"]).plan
+                == .crane(["create", "--name", "db", "postgres"]))
+    }
+
+    @Test func psQuietPassesThrough() {
+        #expect(DockerCompat.docker(["ps", "-q"]).plan == .crane(["ps", "-q"]))
+        #expect(DockerCompat.docker(["ps", "-aq"]).plan == .crane(["ps", "-a", "-q"]))
+    }
+
+    @Test func stopConsumesTimeoutValue() {
+        // docker stop -t 30 web : the 30 is the timeout value, not a container id.
+        #expect(DockerCompat.docker(["stop", "-t", "30", "web"]).plan == .crane(["stop", "web"]))
+    }
+
+    @Test func rmForceThreadsThrough() {
+        #expect(DockerCompat.docker(["rm", "-f", "web"]).plan == .crane(["rm", "-f", "web"]))
+        #expect(DockerCompat.docker(["rm", "a", "b"]).plan == .crane(["rm", "a", "b"]))
     }
 
     @Test func runAttachedFormPublish() {
@@ -193,6 +222,25 @@ struct DockerCompatTests {
     @Test func composeDownMapsToCrane() {
         #expect(DockerCompat.compose(["down"]).plan == .crane(["down"]))
         #expect(DockerCompat.compose(["-f", "stack.yml", "down"]).plan == .crane(["down", "stack.yml"]))
+    }
+
+    @Test func composeDownHonorsProjectName() {
+        // -p foo names the target directly; tearing down `foo`, not the default/file project.
+        #expect(DockerCompat.compose(["-p", "foo", "down"]).plan == .crane(["down", "foo"]))
+        #expect(DockerCompat.compose(["down", "--project-name=foo"]).plan == .crane(["down", "foo"]))
+    }
+
+    @Test func composeUpTargetsRequestedServices() {
+        // `compose up worker` must NOT start the whole project.
+        #expect(DockerCompat.compose(["up", "worker", "-d"]).plan == .crane(["up", ".", "--service", "worker"]))
+        #expect(DockerCompat.compose(["-f", "s.yml", "up", "worker", "db", "-d"]).plan
+                == .crane(["up", "s.yml", "--service", "worker", "--service", "db"]))
+    }
+
+    @Test func composeUpWarnsWhenProjectNameOverridden() {
+        let t = DockerCompat.compose(["-p", "foo", "up", "-d"])
+        #expect(t.plan == .crane(["up"]))
+        #expect(t.warnings.contains { $0.contains("-p") })
     }
 
     @Test func composeLogsIsHonestlyUnsupported() {
