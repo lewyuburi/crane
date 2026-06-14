@@ -27,3 +27,4 @@ graphify-out/
 *.swiftdeps
 *.swiftmodule
 *.swiftsourceinfo
+docs/screenshots/
