@@ -169,11 +169,21 @@ struct Down: AsyncParsableCommand {
     var project: String = "."
 
     func run() async throws {
-        let name = FileManager.default.fileExists(atPath: project)
-            ? try ComposeLoader.load(project).name
-            : ProjectName.sanitize(project)
+        let name: String
+        if FileManager.default.fileExists(atPath: project) {
+            name = try ComposeLoader.load(project).name
+        } else if ComposeLoader.looksLikePath(project) {
+            // Looks like a path but isn't there — don't silently reinterpret it as a project name.
+            throw ValidationError("No compose file at '\(project)'.")
+        } else {
+            name = ProjectName.sanitize(project)
+        }
         print("▸ Stopping \(name)…")
-        await ComposeEngine(cli: ContainerCLI.shared).down(name)
+        let failures = await ComposeEngine(cli: ContainerCLI.shared).down(name)
+        guard failures.isEmpty else {
+            for failure in failures { printError("✗ " + failure) }
+            throw ExitCode.failure
+        }
         print("Done.")
     }
 }

@@ -315,8 +315,11 @@ final class AppModel {
         let ids = containers(inProject: projectName).map(\.id)
         busyContainerIDs.formUnion(ids)
         defer { busyContainerIDs.subtract(ids) }
-        await engine.down(projectName)
-        await refreshContainers()
+        let failures = await engine.down(projectName)
+        await refreshContainers()   // resets errorMessage on success, so report failures *after*
+        if !failures.isEmpty {
+            errorMessage = "Couldn't fully remove \(projectName): " + failures.joined(separator: "; ")
+        }
     }
 
     /// Fully remove a compose project from Crane: bring it down (stop & delete its containers) and

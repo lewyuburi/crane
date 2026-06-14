@@ -89,8 +89,19 @@ struct ComposeEngineTests {
             Container(id: "stk-db", image: "p", status: .running, labels: ["com.docker.compose.project": "stk"]),
             Container(id: "other", image: "x", status: .running, labels: ["com.docker.compose.project": "zzz"]),
         ])
-        await ComposeEngine(cli: fake).down("stk")
+        let failures = await ComposeEngine(cli: fake).down("stk")
         #expect(await fake.stoppedIDs == ["stk-app", "stk-db"])
         #expect(await fake.deletedIDs == ["stk-app", "stk-db"])
+        #expect(failures.isEmpty)   // clean teardown reports no failures
+    }
+
+    @Test func downReportsTeardownFailures() async {
+        let fake = FakeCLI()
+        await fake.setContainers([
+            Container(id: "stk-app", image: "a", status: .running, labels: ["com.docker.compose.project": "stk"]),
+        ])
+        await fake.setFailDeletes(true)
+        let failures = await ComposeEngine(cli: fake).down("stk")
+        #expect(failures.contains { $0.contains("stk-app") })   // surfaced, not swallowed
     }
 }
