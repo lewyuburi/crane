@@ -45,10 +45,14 @@ public enum DockerCompat {
         case "images":
             return Translation(.crane(["images"]))
 
-        case "image" where rest.first == "ls":
-            return Translation(.crane(["images"]))
-        case "image" where rest.first == "rm" || rest.first == "delete":
-            return Translation(.container(["image", "delete"] + rest.dropFirst()))
+        case "image":
+            switch rest.first {
+            case "ls", "list": return Translation(.crane(["images"]))
+            case "rm", "delete": return Translation(.container(["image", "delete"] + rest.dropFirst()))
+            case .some(let sub): return Translation(.container(["image", sub] + rest.dropFirst()))
+            case nil: return Translation(.message(
+                "docker image: needs a subcommand (ls, rm, pull, push, inspect…).", isError: true))
+            }
 
         case "logs":
             return translateLogs(rest)
@@ -57,9 +61,7 @@ public enum DockerCompat {
             return translateRun(rest)
 
         case "exec":
-            // Drop the interactive/tty flags (Crane's exec is always interactive); keep id + command.
-            let kept = rest.filter { !["-i", "-t", "-it", "-ti", "--interactive", "--tty"].contains($0) }
-            return Translation(.crane(["exec"] + kept))
+            return translateExec(rest)
 
         case "start", "stop":
             let ids = rest.filter { !$0.hasPrefix("-") }
@@ -106,6 +108,12 @@ public enum DockerCompat {
         var i = 0
         while i < argv.count {
             let token = argv[i]
+            // Inline form: --file=stack.yml / -f=stack.yml / --project-name=foo.
+            if token.hasPrefix("-"), let eq = token.firstIndex(of: "=") {
+                let flag = String(token[..<eq]), value = String(token[token.index(after: eq)...])
+                if flag == "-f" || flag == "--file" { file = value }
+                i += 1; continue
+            }
             switch token {
             case "-f", "--file":
                 if i + 1 < argv.count { file = argv[i + 1]; i += 1 }
@@ -124,7 +132,14 @@ public enum DockerCompat {
 
         switch sub {
         case "up":
-            return Translation(.crane(["up"] + tail))   // -d ignored: Crane always runs detached
+            // Apple's runtime has no foreground/attached run; `crane up` starts the project, streams
+            // startup logs, then returns. Warn unless the user already asked for detached (`-d`).
+            var warnings: [String] = []
+            if !positional.contains("-d"), !positional.contains("--detach") {
+                warnings.append("docker compose up is attached in Docker; Crane starts the project, "
+                    + "streams startup logs, then returns. Use `crane logs -f <container>` to keep following.")
+            }
+            return Translation(.crane(["up"] + tail), warnings: warnings)
         case "down":
             return Translation(.crane(["down"] + tail))
         case "logs":
@@ -144,6 +159,43 @@ public enum DockerCompat {
             return Translation(.message(
                 "docker compose \(sub): not supported by Crane's compatibility shim.", isError: true))
         }
+    }
+
+    // MARK: - docker exec
+
+    /// `docker exec` flags that take a value (so we consume it instead of mistaking it for the id).
+    private static let execValueFlags: Set<String> = [
+        "-e", "--env", "-w", "--workdir", "-u", "--user", "--detach-keys", "--env-file",
+    ]
+
+    /// Translate `docker exec [flags] <id> <command…>`. Only the *leading* flags are interpreted;
+    /// everything from the container id onward is passed through verbatim, so flags that belong to
+    /// the user's command (e.g. `grep -i`) are preserved. Crane's exec is always interactive.
+    private static func translateExec(_ args: [String]) -> Translation {
+        var warnings: [String] = []
+        var i = 0
+        while i < args.count, args[i].hasPrefix("-") {
+            let token = args[i]
+            if let (flag, _) = splitInlineValue(token) {           // --env=K=V etc.
+                warnings.append(unsupportedFlagWarning(flag)); i += 1; continue
+            }
+            if ["-i", "-t", "--interactive", "--tty"].contains(token) { i += 1; continue }  // no-ops
+            if let cluster = expandShortCluster(token),
+               cluster.allSatisfy({ ["-i", "-t", "-d"].contains($0) }) {
+                if cluster.contains("-d") { warnings.append("ignored -d: crane exec runs in the foreground") }
+                i += 1; continue
+            }
+            if token == "-d" || token == "--detach" {
+                warnings.append("ignored \(token): crane exec runs in the foreground"); i += 1; continue
+            }
+            if execValueFlags.contains(token) {
+                warnings.append(unsupportedFlagWarning(token))
+                if i + 1 < args.count { i += 1 }                   // swallow its value
+                i += 1; continue
+            }
+            warnings.append("ignored unknown flag: \(token)"); i += 1
+        }
+        return Translation(.crane(["exec"] + args[i...]), warnings: warnings)
     }
 
     // MARK: - docker logs
@@ -230,6 +282,7 @@ public enum DockerCompat {
             }
             if let mapped = runValueFlags[token] {
                 if i + 1 < args.count { out += [mapped, args[i + 1]]; i += 1 }
+                else { warnings.append("flag \(token) is missing its value") }
                 i += 1; continue
             }
             if runUnsupportedValueFlags.contains(token) {
