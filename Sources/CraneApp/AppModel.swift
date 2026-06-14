@@ -290,24 +290,15 @@ final class AppModel {
 
     // MARK: - App catalog (one-click templates)
 
-    /// Directory where Crane stores deployed-template projects (compose file + .env).
-    private var appsDirectory: URL {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return support.appendingPathComponent("Crane/apps", isDirectory: true)
-    }
-
     /// Render a template to a managed Compose project (compose.yml + .env), register it, and
     /// bring it up. Reuses the whole compose pipeline (network/volumes, DNS, grouping).
     @discardableResult
     func deployTemplate(_ template: AppTemplate, instanceName: String, values: [String: String]) async -> ComposeProjectRef? {
         let project = ProjectName.sanitize(instanceName.isEmpty ? template.id : instanceName)
-        let dir = appsDirectory.appendingPathComponent(project, isDirectory: true)
-        let composeURL = dir.appendingPathComponent("docker-compose.yml")
+        let dir = CranePaths.appsDirectory.appendingPathComponent(project, isDirectory: true)
+        let composeURL: URL
         do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try template.compose.write(to: composeURL, atomically: true, encoding: .utf8)
-            let envText = TemplateRenderer.envFile(values: values, project: project)
-            try envText.write(to: dir.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
+            composeURL = try TemplateDeployer.materialize(template, project: project, values: values, into: dir)
         } catch {
             errorMessage = "Couldn't write the app files: \(error.localizedDescription)"
             return nil
