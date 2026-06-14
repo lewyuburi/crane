@@ -96,6 +96,19 @@ public actor ContainerCLI {
         return process
     }
 
+    /// A ready-to-run `container <arguments>` process that inherits the caller's stdio. Used by the
+    /// docker-compat shim to pass commands we don't wrap (build, pull, inspect…) straight through.
+    public func passthroughProcess(arguments: [String]) async throws -> Process {
+        guard let runtime = await runtimes.activeRuntime() else {
+            throw ContainerCLIError.notInstalled
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: runtime.binaryPath)
+        process.arguments = arguments
+        Self.configureEnvironment(for: runtime, on: process)
+        return process
+    }
+
     // MARK: - Process execution
 
     @discardableResult
