@@ -9,6 +9,7 @@ A native macOS app for managing [Apple's `container`](https://github.com/apple/c
 | Containers | App gallery |
 |---|---|
 | ![Containers](docs/containers.png) | ![App gallery](docs/gallery.png) |
+| ![One-click deploy](docs/deploy.png) | ![Empty state](docs/empty.png) |
 
 ## Features
 
