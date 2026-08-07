@@ -87,28 +87,33 @@ public final class WorkspaceStore {
         pendingContainers.removeAll()
         pendingLists.removeAll()
 
-        // More than a couple of individual containers is cheaper as one list call.
-        if ids.count > 3 || lists.contains(.containers) {
-            if let containers = try? await client.containers() {
-                catalog.replace(with: containers.map(Container.init))
-            }
-        } else {
-            for id in ids { await refreshContainer(id) }
+        // One listing answers every pending container: the daemon has no bulk-inspect, and asking
+        // per id would repeat the same call N times.
+        if !ids.isEmpty || lists.contains(.containers) {
+            await refreshContainers(ids: lists.contains(.containers) ? nil : ids)
         }
         if lists.contains(.images), let images = try? await client.images() { self.images = images }
         if lists.contains(.volumes), let volumes = try? await client.volumes() { self.volumes = volumes }
         if lists.contains(.networks), let networks = try? await client.networks() { self.networks = networks }
     }
 
-    /// Re-reads one container. A 404 means it vanished between the event and the fetch, which is
-    /// normal for short-lived containers — the row is dropped rather than surfaced as an error.
-    private func refreshContainer(_ id: String) async {
+    /// Re-reads the container list. With `ids`, only those rows are touched — a container that
+    /// vanished between its event and this fetch is dropped, which is normal for short-lived ones.
+    /// With `nil`, the whole catalog is replaced.
+    private func refreshContainers(ids: Set<String>?) async {
         do {
             let summaries = try await client.containers()
-            if let match = summaries.first(where: { $0.id == id }) {
-                catalog.upsert(Container(match))
-            } else {
-                catalog.remove(id: id)
+            guard let ids else {
+                catalog.replace(with: summaries.map(Container.init))
+                return
+            }
+            let byID = Dictionary(uniqueKeysWithValues: summaries.map { ($0.id, $0) })
+            for id in ids {
+                if let summary = byID[id] {
+                    catalog.upsert(Container(summary))
+                } else {
+                    catalog.remove(id: id)
+                }
             }
         } catch {
             failure = error.localizedDescription

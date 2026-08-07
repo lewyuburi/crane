@@ -147,21 +147,23 @@ private struct EngineBadge: View {
     }
 }
 
-/// Error surface that doesn't steal focus: it sits at the bottom until dismissed.
+/// Error surface that doesn't steal focus: it floats at the bottom until dismissed.
 struct Banner: View {
     let message: String
     let dismiss: () -> Void
 
     var body: some View {
         HStack(spacing: Metric.snug) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .symbolRenderingMode(.hierarchical)
             Text(message).font(.callout).lineLimit(3).textSelection(.enabled)
             Spacer(minLength: Metric.snug)
             Button("Dismiss", action: dismiss).buttonStyle(.borderless)
         }
-        .padding(Metric.snug)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
-        .shadow(radius: 6, y: 2)
+        .padding(.horizontal, Metric.regular)
+        .padding(.vertical, Metric.snug)
+        .glassEffect(.regular, in: .capsule)
         .padding(Metric.regular)
     }
 }

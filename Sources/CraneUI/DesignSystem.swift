@@ -1,21 +1,19 @@
 import EngineControl
 import SwiftUI
 
-/// The handful of constants every view shares.
-///
-/// Crane's look is native on purpose — system materials, system type — but consistent spacing
-/// and one status vocabulary are what keep it from looking like a settings dialog.
+/// Spacing tokens. Everything else about Crane's look comes from AppKit and SwiftUI themselves —
+/// `Form`, `Section`, `LabeledContent`, `Table` and Liquid Glass already know what a macOS app
+/// looks like, and hand-drawn cards only manage to look like a worse version of them.
 public enum Metric {
-    /// The 4-point rhythm everything snaps to.
     public static let tight: CGFloat = 6
     public static let snug: CGFloat = 10
     public static let regular: CGFloat = 16
     public static let loose: CGFloat = 24
-    public static let section: CGFloat = 32
 
-    public static let cardRadius: CGFloat = 12
-    /// Comfortable reading width for onboarding and explanatory copy.
-    public static let proseWidth: CGFloat = 480
+    /// Comfortable reading width for explanatory copy.
+    public static let proseWidth: CGFloat = 460
+    /// Detail panes stop growing here so text doesn't stretch across a wide window.
+    public static let detailWidth: CGFloat = 720
 }
 
 public extension Diagnostic.Severity {
@@ -41,31 +39,34 @@ public extension EngineComponent {
         switch self {
         case .runtime: return "cpu"
         case .socktainer: return "point.3.connected.trianglepath.dotted"
-        case .docker: return "terminal"
+        case .docker: return "apple.terminal"
         case .compose: return "square.stack.3d.up"
         }
     }
 }
 
-/// A grouped container with the app's standard padding and material.
-public struct Card<Content: View>: View {
-    private let content: Content
+/// A value shown next to a label, monospaced and selectable — the shape most of Crane's detail
+/// rows take. Wraps `LabeledContent` so every one of them aligns identically.
+public struct DetailRow: View {
+    let label: String
+    let value: String
+    var monospaced: Bool = true
+    var tint: Color?
 
-    public init(@ViewBuilder content: () -> Content) {
-        self.content = content()
+    public init(_ label: String, _ value: String, monospaced: Bool = true, tint: Color? = nil) {
+        self.label = label
+        self.value = value
+        self.monospaced = monospaced
+        self.tint = tint
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 0) { content }
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
-            .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(.separator, lineWidth: 0.5))
-    }
-}
-
-/// A hairline between rows that stops short of the card's edges.
-public struct RowDivider: View {
-    public init() {}
-    public var body: some View {
-        Divider().padding(.leading, Metric.regular)
+        LabeledContent(label) {
+            Text(value)
+                .font(monospaced ? .system(.body, design: .monospaced) : .body)
+                .foregroundStyle(tint ?? .primary)
+                .textSelection(.enabled)
+                .multilineTextAlignment(.trailing)
+        }
     }
 }

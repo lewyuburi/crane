@@ -12,8 +12,6 @@ import Observation
 public final class LogSession {
     public private(set) var isStreaming = false
     public var failure: String?
-    /// Set false to freeze the tail without dropping the connection.
-    public var isFollowing = true
 
     private let client: DockerClient
     private let containerID: String
@@ -39,7 +37,10 @@ public final class LogSession {
             do {
                 for try await chunk in client.logs(containerID, follow: true, tail: tail, tty: tty) {
                     guard !Task.isCancelled else { break }
-                    if isFollowing { self.sink?(chunk.text) }
+                    // Every chunk is delivered, always: "follow" is about where the view scrolls,
+                    // not about dropping output. Discarding here would leave a permanent hole in
+                    // the log that nothing tells the user about.
+                    self.sink?(chunk.text)
                 }
             } catch {
                 failure = error.localizedDescription

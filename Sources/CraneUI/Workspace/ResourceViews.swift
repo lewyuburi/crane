@@ -37,6 +37,7 @@ struct ImagesView: View {
                     }
                     .width(120)
                 }
+                .tableStyle(.inset(alternatesRowBackgrounds: true))
                 .contextMenu(forSelectionType: ImageSummary.ID.self) { ids in
                     Button("Remove", role: .destructive) { remove(ids) }
                 }
@@ -70,7 +71,9 @@ struct ImagesView: View {
                 ProgressView().controlSize(.small)
                 Text(pullStatus).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             } else {
-                Button("Pull", action: pull).disabled(pullReference.trimmingCharacters(in: .whitespaces).isEmpty)
+                Button("Pull", action: pull)
+                    .buttonStyle(.glassProminent)
+                    .disabled(pullReference.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(Metric.snug)
@@ -153,6 +156,7 @@ struct VolumesView: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(create)
                 Button("Create", action: create)
+                    .buttonStyle(.glassProminent)
                     .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .padding(Metric.snug)

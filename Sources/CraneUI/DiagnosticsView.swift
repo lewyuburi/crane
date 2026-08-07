@@ -4,63 +4,73 @@ import SwiftUI
 
 /// The stack's health, one row per thing that can be wrong, each with the button that fixes it.
 ///
-/// This is the screen that earns trust: nothing here is a status light without a remedy, and the
-/// remedies are the same calls onboarding makes.
+/// A grouped `Form` — the same construction System Settings uses — so the rows align, the section
+/// headers read as headers, and nothing here is a status light without a remedy.
 public struct DiagnosticsView: View {
     @Environment(EngineModel.self) private var model
     @State private var repairing: String?
 
     public init() {}
 
+    private var status: EngineStatus? { model.status }
+
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Metric.loose) {
-                header
-                Card {
-                    ForEach(Array(model.diagnostics.enumerated()), id: \.element.id) { index, check in
-                        if index > 0 { RowDivider() }
-                        DiagnosticRow(check: check, isRepairing: repairing == check.id) {
-                            await repair(check)
-                        }
+        Form {
+            Section {
+                ForEach(model.diagnostics) { check in
+                    DiagnosticRow(check: check, isRepairing: repairing == check.id) {
+                        await repair(check)
                     }
                 }
-                if let failure = model.failure {
+            } header: {
+                Text(model.phase == .ready ? "Everything is running" : "Needs attention")
+            } footer: {
+                if model.phase == .ready {
+                    Text("Docker-compatible tools on this Mac talk to Crane.")
+                } else {
+                    Text("Containers can't run until the blocking items are fixed.")
+                }
+            }
+
+            Section("Stack") {
+                DetailRow("Crane", CraneVersion.current)
+                ForEach(StackManifest.current.artifacts, id: \.component) { artifact in
+                    DetailRow(artifact.component.displayName, artifact.version)
+                }
+                LabeledContent("Docker socket") {
+                    Text(model.engine.socketPath)
+                        .font(.system(.callout, design: .monospaced))
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+
+            if let failure = model.failure {
+                Section {
                     Label(failure, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
-                        .font(.callout)
                         .textSelection(.enabled)
                 }
-                Text(CraneVersion.stackSummary)
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
             }
-            .padding(Metric.loose)
-            .frame(maxWidth: 720, alignment: .leading)
-            .frame(maxWidth: .infinity)
         }
+        .formStyle(.grouped)
         .navigationTitle("Engine")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
+                Button("Re-check", systemImage: "arrow.clockwise") {
                     Task { await model.refresh() }
-                } label: {
-                    Label("Re-check", systemImage: "arrow.clockwise")
                 }
+            }
+            ToolbarSpacer(.fixed)
+            ToolbarItem(placement: .primaryAction) {
+                Button("Repair everything", systemImage: "wrench.adjustable") {
+                    Task { await model.provision() }
+                }
+                .disabled(model.phase == .working)
             }
         }
         .task { await model.refresh() }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: Metric.tight) {
-            Text(model.phase == .ready ? "Everything is running" : "The engine needs attention")
-                .font(.title2.weight(.semibold))
-            Text(model.phase == .ready
-                 ? "Docker-compatible tools can connect to this Mac."
-                 : "Fix the items below to start containers.")
-                .foregroundStyle(.secondary)
-        }
     }
 
     private func repair(_ check: Diagnostic) async {
@@ -77,32 +87,27 @@ private struct DiagnosticRow: View {
     let repair: () async -> Void
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Metric.snug) {
-            Image(systemName: check.severity.symbol)
-                .foregroundStyle(check.severity.tint)
-                .accessibilityLabel(accessibilityStatus)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(check.title).fontWeight(.medium)
-                Text(check.detail)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: Metric.regular)
+        LabeledContent {
             if isRepairing {
                 ProgressView().controlSize(.small)
             } else if check.repair != nil {
                 Button("Fix") { Task { await repair() } }
+                    .buttonStyle(.glass)
             }
-        }
-        .padding(Metric.regular)
-    }
-
-    private var accessibilityStatus: String {
-        switch check.severity {
-        case .ok: return "OK"
-        case .warning: return "Warning"
-        case .blocking: return "Blocked"
+        } label: {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(check.title)
+                    Text(check.detail)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } icon: {
+                Image(systemName: check.severity.symbol)
+                    .foregroundStyle(check.severity.tint)
+                    .symbolRenderingMode(.hierarchical)
+            }
         }
     }
 }

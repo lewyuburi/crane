@@ -14,6 +14,9 @@ struct LogConsole: NSViewRepresentable {
 
     let session: LogSession
     let fontSize: CGFloat
+    /// Whether the view sticks to the tail. Pausing stops the scrolling, never the stream: the
+    /// output keeps arriving so scrolling back down shows an unbroken log.
+    let follows: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -45,6 +48,7 @@ struct LogConsole: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.textView?.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        context.coordinator.follows = follows
     }
 
     static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
@@ -55,12 +59,13 @@ struct LogConsole: NSViewRepresentable {
     final class Coordinator {
         var textView: NSTextView?
         var scrollView: NSScrollView?
+        var follows = true
 
         func append(_ chunk: String) {
             guard let textView, let storage = textView.textStorage else { return }
-            // Only follow the tail if the user is already there; scrolling up to read must not
-            // be yanked back by new output.
-            let wasAtBottom = isScrolledToBottom
+            // Follow the tail only when asked to *and* when the user is already there: scrolling
+            // up to read must not be yanked back by new output.
+            let shouldFollow = follows && isScrolledToBottom
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: textView.font ?? NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
                 .foregroundColor: NSColor.labelColor,
@@ -71,7 +76,7 @@ struct LogConsole: NSViewRepresentable {
             if overflow > 0 {
                 storage.deleteCharacters(in: NSRange(location: 0, length: overflow))
             }
-            if wasAtBottom { textView.scrollToEndOfDocument(nil) }
+            if shouldFollow { textView.scrollToEndOfDocument(nil) }
         }
 
         func clear() {
@@ -94,11 +99,12 @@ struct LogsTab: View {
     let container: Container
     @State private var session: LogSession?
     @State private var fontSize: CGFloat = 12
+    @State private var follows = true
 
     var body: some View {
         Group {
             if let session {
-                LogConsole(session: session, fontSize: fontSize)
+                LogConsole(session: session, fontSize: fontSize, follows: follows)
             } else {
                 Color.clear
             }
@@ -110,14 +116,11 @@ struct LogsTab: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                if let session {
-                    Toggle(isOn: Binding(get: { session.isFollowing },
-                                         set: { session.isFollowing = $0 })) {
-                        Label("Follow", systemImage: session.isFollowing ? "play.fill" : "pause.fill")
-                    }
-                    .toggleStyle(.button)
-                    .help(session.isFollowing ? "Pause the tail" : "Resume following")
+                Toggle(isOn: $follows) {
+                    Label("Follow", systemImage: follows ? "play.fill" : "pause.fill")
                 }
+                .toggleStyle(.button)
+                .help(follows ? "Stop scrolling to the newest line" : "Scroll with new output again")
                 Button {
                     fontSize = max(9, fontSize - 1)
                 } label: {

@@ -51,16 +51,10 @@ struct LiveDaemonTests {
             let name = "crane-live-test"
             try? await client.remove(name, force: true)
 
-            // `docker run` is create+start; the API needs them separately.
-            let payload: [String: Any] = [
-                "Image": "alpine:3.22",
-                "Cmd": ["sh", "-c", "echo hello from crane; sleep 30"],
-                "Labels": ["dev.crane.test": "1"],
-            ]
-            _ = try await client.data(.POST, "/containers/create",
-                                      query: [.init(name: "name", value: name)],
-                                      body: try JSONSerialization.data(withJSONObject: payload))
-            try await client.start(name)
+            let spec = ContainerSpec(image: "alpine:3.22",
+                                     command: ["sh", "-c", "echo hello from crane; sleep 30"],
+                                     labels: ["dev.crane.test": "1"])
+            try await client.run(spec, name: name)
 
             let detail = try await client.container(name)
             #expect(detail.state.running)

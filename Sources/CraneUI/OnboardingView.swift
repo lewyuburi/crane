@@ -4,97 +4,111 @@ import SwiftUI
 
 /// First run: say plainly what will be installed, then install it.
 ///
-/// No wizard pages. Crane needs four binaries and two launch agents, all under Application
-/// Support and none of them requiring an admin password — that is short enough to just show.
+/// No wizard pages. Four binaries and two launch agents, all under Application Support and none
+/// needing an admin password — that's short enough to just show.
 public struct OnboardingView: View {
     @Environment(EngineModel.self) private var model
 
     public init() {}
 
-    private var manifest: StackManifest { StackManifest.current }
     private var isWorking: Bool { model.phase == .working }
 
     public var body: some View {
-        VStack(spacing: Metric.loose) {
-            Spacer(minLength: 0)
-
-            VStack(spacing: Metric.snug) {
-                Image(systemName: "shippingbox.fill")
-                    .font(.system(size: 46))
-                    .foregroundStyle(.tint)
-                Text("Set up the container engine")
-                    .font(.largeTitle.weight(.semibold))
-                Text("Crane installs and supervises everything below. It all lives in your "
-                     + "Library folder — no admin password, nothing added to the system.")
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: Metric.proseWidth)
-            }
-
-            Card {
-                ForEach(Array(EngineComponent.allCases.enumerated()), id: \.element) { index, component in
-                    if index > 0 { RowDivider() }
-                    ComponentRow(component: component,
-                                 version: manifest.artifact(for: component).version,
-                                 progress: model.progress[component])
+        VStack(spacing: 0) {
+            header
+            Form {
+                Section {
+                    ForEach(StackManifest.current.artifacts, id: \.component) { artifact in
+                        ComponentRow(artifact: artifact, progress: model.progress[artifact.component])
+                    }
+                } header: {
+                    Text("Crane will install")
+                } footer: {
+                    Text("Everything lands in ~/Library/Application Support/Crane. "
+                         + "Crane also adds two login items so the engine is running when you need it.")
                 }
-            }
-            .frame(maxWidth: Metric.proseWidth + 80)
-
-            VStack(spacing: Metric.snug) {
-                Button {
-                    Task { await model.provision() }
-                } label: {
-                    Text(isWorking ? "Setting up…" : "Set up Crane")
-                        .frame(minWidth: 160)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(isWorking)
-                .keyboardShortcut(.defaultAction)
 
                 if let failure = model.failure {
-                    Text(failure)
-                        .font(.callout)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: Metric.proseWidth)
-                        .textSelection(.enabled)
+                    Section {
+                        Label(failure, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .textSelection(.enabled)
+                    }
                 }
             }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
 
-            Spacer(minLength: 0)
+            footer
         }
-        .padding(Metric.section)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var header: some View {
+        VStack(spacing: Metric.snug) {
+            Image(systemName: "shippingbox.fill")
+                .font(.system(size: 44))
+                .foregroundStyle(.tint)
+                .symbolRenderingMode(.hierarchical)
+            Text("Set up the container engine")
+                .font(.largeTitle.weight(.semibold))
+            Text("Crane runs Apple's container runtime behind a Docker-compatible socket, so "
+                 + "`docker`, Compose, Testcontainers and Dev Containers all work against it.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: Metric.proseWidth)
+        }
+        .padding(.top, Metric.loose * 1.5)
+        .padding(.horizontal, Metric.loose)
+    }
+
+    private var footer: some View {
+        HStack {
+            Text(CraneVersion.stackSummary)
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+            Spacer()
+            Button {
+                Task { await model.provision() }
+            } label: {
+                Text(isWorking ? "Setting up…" : "Set up Crane")
+                    .frame(minWidth: 140)
+            }
+            .buttonStyle(.glassProminent)
+            .controlSize(.large)
+            .disabled(isWorking)
+            .keyboardShortcut(.defaultAction)
+        }
+        .padding(Metric.loose)
+        .background(.bar)
     }
 }
 
 private struct ComponentRow: View {
-    let component: EngineComponent
-    let version: String
+    let artifact: Artifact
     let progress: StackInstaller.Progress?
 
     var body: some View {
-        HStack(spacing: Metric.snug) {
-            Image(systemName: component.symbol)
-                .frame(width: 22)
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: Metric.tight) {
-                    Text(component.displayName).fontWeight(.medium)
-                    Text(version)
-                        .font(.caption.monospacedDigit())
+        LabeledContent {
+            status
+        } label: {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: Metric.tight) {
+                        Text(artifact.component.displayName)
+                        Text(artifact.version)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(artifact.component.purpose)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
-                Text(component.purpose)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+            } icon: {
+                Image(systemName: artifact.component.symbol)
+                    .symbolRenderingMode(.hierarchical)
             }
-            Spacer(minLength: Metric.regular)
-            status
         }
-        .padding(Metric.regular)
     }
 
     @ViewBuilder
@@ -103,13 +117,13 @@ private struct ComponentRow: View {
         case .none:
             EmptyView()
         case .done:
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .symbolRenderingMode(.hierarchical)
         case .downloading:
-            // A determinate bar only while bytes are moving; the other phases are too quick to
-            // measure and a spinner tells the truth about them.
-            ProgressView(value: progress?.fraction ?? 0)
-                .frame(width: 90)
-            .progressViewStyle(.linear)
+            // Determinate only while bytes move; the other phases are too quick to measure and a
+            // spinner tells the truth about them.
+            ProgressView(value: progress?.fraction ?? 0).frame(width: 90)
         default:
             ProgressView().controlSize(.small)
         }

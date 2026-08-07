@@ -51,6 +51,7 @@ struct ContainerListView: View {
                 .help(showsStopped ? "Hide stopped containers" : "Show stopped containers")
             }
         }
+        .animation(.easeOut(duration: 0.2), value: store.containers.count)
     }
 
     private var subtitle: String {
@@ -68,6 +69,7 @@ struct ContainerListView: View {
                 } header: {
                     ProjectHeader(project: project)
                 }
+                .headerProminence(.increased)
             }
             if !grouping.standalone.isEmpty {
                 Section(grouping.projects.isEmpty ? "" : "Standalone") {

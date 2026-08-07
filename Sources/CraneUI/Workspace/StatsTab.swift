@@ -1,3 +1,4 @@
+import Charts
 import CraneCore
 import DockerAPI
 import SwiftUI
@@ -9,30 +10,42 @@ struct StatsTab: View {
     @State private var session: StatsSession?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Metric.loose) {
-                if let session, let sample = session.latest {
-                    Meter(title: "CPU", value: min(session.cpuPercent / 100, 1),
+        Form {
+            if let session, let sample = session.latest {
+                Section {
+                    Trend(title: "CPU",
                           caption: String(format: "%.1f %%", session.cpuPercent),
-                          history: session.cpuHistory.map { min($0 / 100, 1) }, tint: .blue)
-                    Meter(title: "Memory", value: sample.memoryFraction,
+                          values: session.cpuHistory.map { min($0 / 100, 1) },
+                          tint: .blue)
+                }
+                Section {
+                    Trend(title: "Memory",
                           caption: "\(byteString(sample.memoryUsage)) of \(byteString(sample.memoryLimit))",
-                          history: session.memoryHistory, tint: .green)
-                    counters(sample)
-                } else {
+                          values: session.memoryHistory,
+                          tint: .green)
+                }
+                Section("Totals since start") {
+                    LabeledContent("Network in") { Text(byteString(sample.networkRx)).monospacedDigit() }
+                    LabeledContent("Network out") { Text(byteString(sample.networkTx)).monospacedDigit() }
+                    LabeledContent("Disk read") { Text(byteString(sample.blockRead)).monospacedDigit() }
+                    LabeledContent("Disk written") { Text(byteString(sample.blockWrite)).monospacedDigit() }
+                    LabeledContent("Processes") { Text("\(sample.processes)").monospacedDigit() }
+                }
+            } else {
+                Section {
                     HStack(spacing: Metric.snug) {
                         ProgressView().controlSize(.small)
                         Text("Sampling…").foregroundStyle(.secondary)
                     }
                 }
-                if let failure = session?.failure {
-                    Text(failure).font(.callout).foregroundStyle(.red)
+            }
+            if let failure = session?.failure {
+                Section {
+                    Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 }
             }
-            .padding(Metric.loose)
-            .frame(maxWidth: 760, alignment: .leading)
-            .frame(maxWidth: .infinity)
         }
+        .formStyle(.grouped)
         .task(id: container.id) {
             let session = StatsSession(client: model.client, containerID: container.id)
             self.session = session
@@ -41,80 +54,45 @@ struct StatsTab: View {
             while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
         }
     }
-
-    private func counters(_ sample: StatsSample) -> some View {
-        Card {
-            CounterRow(symbol: "arrow.down.circle", title: "Network in", value: byteString(sample.networkRx))
-            RowDivider()
-            CounterRow(symbol: "arrow.up.circle", title: "Network out", value: byteString(sample.networkTx))
-            RowDivider()
-            CounterRow(symbol: "internaldrive", title: "Disk read", value: byteString(sample.blockRead))
-            RowDivider()
-            CounterRow(symbol: "internaldrive.fill", title: "Disk written", value: byteString(sample.blockWrite))
-            RowDivider()
-            CounterRow(symbol: "number", title: "Processes", value: "\(sample.processes)")
-        }
-    }
 }
 
-private struct CounterRow: View {
-    let symbol: String
+/// A headline number with its recent shape underneath.
+///
+/// Swift Charts rather than a hand-drawn path: it handles the scale, the fill and the animation,
+/// and the result matches every other chart on the system.
+private struct Trend: View {
     let title: String
-    let value: String
-
-    var body: some View {
-        HStack {
-            Label(title, systemImage: symbol).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).monospacedDigit()
-        }
-        .padding(Metric.regular)
-    }
-}
-
-/// A labelled bar with the recent history drawn behind it.
-private struct Meter: View {
-    let title: String
-    let value: Double
     let caption: String
-    let history: [Double]
-    let tint: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Metric.tight) {
-            HStack {
-                Text(title).font(.headline)
-                Spacer()
-                Text(caption).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
-            }
-            Sparkline(values: history, tint: tint)
-                .frame(height: 44)
-                .background(tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-            ProgressView(value: min(max(value, 0), 1)).tint(tint)
-        }
-    }
-}
-
-/// A minimal line chart: no axes, no legend — it exists to show shape over time.
-private struct Sparkline: View {
+    /// 0…1, oldest first.
     let values: [Double]
     let tint: Color
 
     var body: some View {
-        GeometryReader { proxy in
-            let points = values.suffix(StatsSession.historyLength)
-            if points.count > 1 {
-                let step = proxy.size.width / CGFloat(max(points.count - 1, 1))
-                Path { path in
-                    for (index, value) in points.enumerated() {
-                        let x = CGFloat(index) * step
-                        let y = proxy.size.height * (1 - CGFloat(min(max(value, 0), 1)))
-                        if index == 0 { path.move(to: CGPoint(x: x, y: y)) }
-                        else { path.addLine(to: CGPoint(x: x, y: y)) }
-                    }
-                }
-                .stroke(tint, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+        VStack(alignment: .leading, spacing: Metric.snug) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(.headline)
+                Spacer()
+                Text(caption)
+                    .font(.title3.monospacedDigit())
+                    .foregroundStyle(tint)
+                    .contentTransition(.numericText())
             }
+            Chart(Array(values.enumerated()), id: \.offset) { index, value in
+                AreaMark(x: .value("Sample", index), y: .value("Use", value))
+                    .foregroundStyle(tint.opacity(0.18).gradient)
+                    .interpolationMethod(.monotone)
+                LineMark(x: .value("Sample", index), y: .value("Use", value))
+                    .foregroundStyle(tint)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .interpolationMethod(.monotone)
+            }
+            .chartYScale(domain: 0...1)
+            .chartXScale(domain: 0...Double(max(values.count - 1, StatsSession.historyLength / 4)))
+            .chartXAxis(.hidden)
+            .chartYAxis(.hidden)
+            .frame(height: 64)
+            .animation(.easeOut(duration: 0.25), value: values.count)
         }
+        .padding(.vertical, Metric.tight)
     }
 }
