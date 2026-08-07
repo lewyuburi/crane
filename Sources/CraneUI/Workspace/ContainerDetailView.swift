@@ -6,7 +6,7 @@ import SwiftUI
 /// The detail pane for one container.
 struct ContainerDetailView: View {
     enum Tab: String, CaseIterable, Identifiable {
-        case info = "Info", logs = "Logs", stats = "Stats", terminal = "Terminal"
+        case info = "Info", stats = "Stats", logs = "Logs", terminal = "Terminal"
         var id: String { rawValue }
     }
 
@@ -37,7 +37,7 @@ struct ContainerDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle(container.service ?? container.name)
-        .navigationSubtitle(container.image)
+        .navigationSubtitle(container.state.label)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Picker("View", selection: $tab) {
@@ -45,9 +45,15 @@ struct ContainerDetailView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .fixedSize()
             }
             ToolbarSpacer(.flexible)
             ToolbarItemGroup(placement: .primaryAction) {
+                if let port = container.publishedPorts.first?.hostPort,
+                   let url = URL(string: "http://localhost:\(port)") {
+                    Button("Open", systemImage: "safari") { NSWorkspace.shared.open(url) }
+                        .help("Open localhost:\(port)")
+                }
                 if container.isRunning {
                     Button("Restart", systemImage: "arrow.clockwise") {
                         Task { await model.workspace.restart(container) }
@@ -77,81 +83,193 @@ private struct InfoTab: View {
     @State private var detail: ContainerDetail?
 
     var body: some View {
-        Form {
-            Section {
-                LabeledContent("Status") {
-                    HStack(spacing: Metric.tight) {
-                        StatusDot(state: container.state, health: container.health)
-                        Text(statusText)
-                    }
-                }
-                DetailRow("Image", container.image, monospaced: false)
-                DetailRow("Container ID", String(container.id.prefix(12)))
-                if let project = container.project {
-                    DetailRow("Compose project", project, monospaced: false)
-                    if let service = container.service {
-                        DetailRow("Service", service, monospaced: false)
-                    }
-                }
-                if let address = container.addresses.values.sorted().first {
-                    DetailRow("Address", address)
-                }
-                if let policy = detail?.restartPolicy {
-                    DetailRow("Restart policy", policy, monospaced: false)
-                }
-                DetailRow("Created",
-                          container.created.formatted(date: .abbreviated, time: .shortened),
-                          monospaced: false)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Metric.loose) {
+                identity
+                summary
+                if !container.publishedPorts.isEmpty { ports }
+                if let detail, !detail.mounts.isEmpty { mounts(detail) }
+                if let detail, !detail.config.environment.isEmpty { environment(detail) }
+                if !container.labels.isEmpty { labels }
             }
-
-            if !container.publishedPorts.isEmpty {
-                Section("Published ports") {
-                    ForEach(container.publishedPorts, id: \.hostPort) { port in
-                        LabeledContent {
-                            if let host = port.hostPort, let url = URL(string: "http://localhost:\(host)") {
-                                Link("Open", destination: url)
-                            }
-                        } label: {
-                            Text("localhost:\(port.hostPort ?? 0) → \(port.containerPort)/\(port.proto)")
-                                .font(.system(.body, design: .monospaced))
-                        }
-                    }
-                }
-            }
-
-            if let detail, !detail.mounts.isEmpty {
-                Section("Mounts") {
-                    ForEach(Array(detail.mounts.enumerated()), id: \.offset) { _, mount in
-                        DetailRow(mount.destination + (mount.readOnly ? "  (ro)" : ""),
-                                  mount.name ?? mount.source)
-                    }
-                }
-            }
-
-            if let detail, !detail.config.environment.isEmpty {
-                Section("Environment") {
-                    ForEach(Array(detail.config.environment.enumerated()), id: \.offset) { _, entry in
-                        let parts = entry.split(separator: "=", maxSplits: 1).map(String.init)
-                        DetailRow(parts.first ?? entry, parts.count > 1 ? parts[1] : "")
-                    }
-                }
-            }
-
-            if !container.labels.isEmpty {
-                Section("Labels") {
-                    ForEach(container.labels.sorted(by: { $0.key < $1.key }), id: \.key) { key, value in
-                        DetailRow(key, value)
-                    }
-                }
-            }
+            .padding(Metric.loose)
+            .frame(maxWidth: Metric.detailWidth, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
-        .formStyle(.grouped)
         .task(id: container.id) { detail = await model.workspace.detail(container.id) }
+    }
+
+    private var identity: some View {
+        HStack(spacing: Metric.regular) {
+            ContainerAvatar(image: container.image, state: container.state,
+                            health: container.health, size: 46)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(container.service ?? container.name)
+                    .font(.title2.weight(.semibold))
+                Text(container.image)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            Spacer()
+        }
+    }
+
+    private var summary: some View {
+        InfoTable(rows: summaryRows)
+    }
+
+    private var summaryRows: [(String, String)] {
+        var rows: [(String, String)] = [
+            ("Status", statusText),
+            ("Container ID", String(container.id.prefix(12))),
+        ]
+        if let project = container.project {
+            rows.append(("Compose project", project))
+            if let service = container.service { rows.append(("Service", service)) }
+        }
+        if let address = container.addresses.values.sorted().first { rows.append(("Address", address)) }
+        if let policy = detail?.restartPolicy { rows.append(("Restart policy", policy)) }
+        if let detail, detail.restartCount > 0 { rows.append(("Restarts", "\(detail.restartCount)")) }
+        if let workdir = detail?.config.workingDirectory, !workdir.isEmpty {
+            rows.append(("Working directory", workdir))
+        }
+        rows.append(("Created", container.created.formatted(date: .abbreviated, time: .shortened)))
+        return rows
     }
 
     private var statusText: String {
         var text = container.statusText.isEmpty ? container.state.label : container.statusText
         if let health = container.health { text += " · \(health.rawValue)" }
         return text
+    }
+
+    private var ports: some View {
+        Block("Ports") {
+            InfoTable(columns: ("Host", "Container"), rows: container.publishedPorts.map { port in
+                ("localhost:\(port.hostPort ?? 0)", "\(port.containerPort)/\(port.proto)")
+            }, link: { row in URL(string: "http://\(row.0)") })
+        }
+    }
+
+    private func mounts(_ detail: ContainerDetail) -> some View {
+        Block("Mounts") {
+            InfoTable(columns: ("Source", "Destination"),
+                      rows: detail.mounts.map { mount in
+                          (mount.name ?? abbreviate(mount.source),
+                           mount.destination + (mount.readOnly ? "  (ro)" : ""))
+                      })
+        }
+    }
+
+    private func environment(_ detail: ContainerDetail) -> some View {
+        Block("Environment") {
+            InfoTable(columns: ("Variable", "Value"), rows: detail.config.environment.map { entry in
+                let parts = entry.split(separator: "=", maxSplits: 1).map(String.init)
+                return (parts.first ?? entry, parts.count > 1 ? parts[1] : "")
+            })
+        }
+    }
+
+    private var labels: some View {
+        Block("Labels") {
+            InfoTable(columns: ("Key", "Value"),
+                      rows: container.labels.sorted { $0.key < $1.key }.map { ($0.key, $0.value) })
+        }
+    }
+
+    /// Home-relative paths read better than absolute ones, and they're what the user typed.
+    private func abbreviate(_ path: String) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path(percentEncoded: false)
+        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count - 1) : path
+    }
+}
+
+/// A titled group in the detail pane.
+private struct Block<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Metric.snug) {
+            Text(title).font(.headline)
+            content
+        }
+    }
+}
+
+/// Two aligned columns with hairlines and alternating rows — the shape every table in a Mac app
+/// takes, built with `Grid` so it lives inside a scroll view without nesting another one.
+private struct InfoTable: View {
+    var columns: (String, String)?
+    let rows: [(String, String)]
+    var link: ((String, String)) -> URL? = { _ in nil }
+
+    init(columns: (String, String)? = nil, rows: [(String, String)],
+         link: @escaping ((String, String)) -> URL? = { _ in nil }) {
+        self.columns = columns
+        self.rows = rows
+        self.link = link
+    }
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+            if let columns {
+                GridRow {
+                    header(columns.0)
+                    header(columns.1)
+                }
+                Divider().gridCellColumns(2)
+            }
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                if index > 0 || columns == nil {
+                    if index > 0 { Divider().gridCellColumns(2) }
+                }
+                GridRow {
+                    Text(row.0)
+                        .foregroundStyle(columns == nil ? .secondary : .primary)
+                        .font(columns == nil ? .body : .system(.callout, design: .monospaced))
+                        .textSelection(.enabled)
+                        .padding(.horizontal, Metric.snug)
+                        .padding(.vertical, 7)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    value(row)
+                        .padding(.horizontal, Metric.snug)
+                        .padding(.vertical, 7)
+                        .frame(maxWidth: .infinity, alignment: columns == nil ? .trailing : .leading)
+                }
+                .background(index.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.035))
+            }
+        }
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator, lineWidth: 0.5))
+    }
+
+    @ViewBuilder
+    private func value(_ row: (String, String)) -> some View {
+        if let url = link(row) {
+            Link(row.1, destination: url).font(.system(.callout, design: .monospaced))
+        } else {
+            Text(row.1)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(row.1)
+        }
+    }
+
+    private func header(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, Metric.snug)
+            .padding(.vertical, 5)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
