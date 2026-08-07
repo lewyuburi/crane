@@ -26,8 +26,12 @@ public actor EventFeed {
     }
 
     /// Starts the feed and returns its signals. Cancelling the consuming task stops the feed.
+    ///
+    /// A second call replaces the first: two live subscriptions would double every event, so the
+    /// previous one is cancelled rather than orphaned.
     public func signals() -> AsyncStream<FeedSignal> {
-        AsyncStream<FeedSignal> { continuation in
+        task?.cancel()
+        return AsyncStream<FeedSignal> { continuation in
             let task = Task { await run { continuation.yield($0) } }
             self.task = task
             continuation.onTermination = { _ in task.cancel() }

@@ -93,16 +93,19 @@ public final class DockerClient: Sendable {
             request.headers.add(name: "Content-Type", value: "application/json")
             request.body = .bytes(ByteBuffer(data: body))
         }
-        let response: HTTPClientResponse
+        // Both the connect and the body read can fail with the same underlying cause: over
+        // Network.framework the failure often only surfaces while reading, so mapping just the
+        // `execute` call would leak a raw POSIX error to the UI.
+        let payload: Data
         do {
-            response = try await http.execute(request, timeout: .seconds(30))
+            let response = try await http.execute(request, timeout: .seconds(30))
+            let buffer = try await response.body.collect(upTo: limit)
+            payload = Data(buffer.readableBytesView)
+            guard (200..<300).contains(response.status.code) else {
+                throw DockerError.from(status: response.status.code, body: payload)
+            }
         } catch {
             throw Self.mapTransport(error, socket: socket)
-        }
-        let buffer = try await response.body.collect(upTo: limit)
-        let payload = Data(buffer.readableBytesView)
-        guard (200..<300).contains(response.status.code) else {
-            throw DockerError.from(status: response.status.code, body: payload)
         }
         return payload
     }
@@ -115,12 +118,7 @@ public final class DockerClient: Sendable {
                 do {
                     var request = HTTPClientRequest(url: socket.url(Self.prefixed(path), query: query))
                     request.method = method
-                    let response: HTTPClientResponse
-                    do {
-                        response = try await http.execute(request, deadline: .distantFuture)
-                    } catch {
-                        throw Self.mapTransport(error, socket: socket)
-                    }
+                    let response = try await http.execute(request, deadline: .distantFuture)
                     guard (200..<300).contains(response.status.code) else {
                         let buffer = try await response.body.collect(upTo: 1 << 20)
                         throw DockerError.from(status: response.status.code,
@@ -133,7 +131,7 @@ public final class DockerClient: Sendable {
                 } catch is CancellationError {
                     continuation.finish()
                 } catch {
-                    continuation.finish(throwing: error)
+                    continuation.finish(throwing: Self.mapTransport(error, socket: socket))
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
@@ -142,10 +140,12 @@ public final class DockerClient: Sendable {
 
     // MARK: - Helpers
 
-    /// Endpoints are versioned except `/_ping`, which the daemon serves unprefixed too; keeping
-    /// the prefix in one place stops it from being forgotten in a new call site.
+    /// Prefixes an endpoint with the API version, unless it already carries it.
+    ///
+    /// The test for "already prefixed" has to be the full `/v1.51/`: matching a bare `/v` would
+    /// quietly leave `/version` unversioned.
     static func prefixed(_ path: String) -> String {
-        path.hasPrefix("/v") ? path : "/\(apiVersion)\(path)"
+        path.hasPrefix("/\(apiVersion)/") ? path : "/\(apiVersion)\(path)"
     }
 
     private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
@@ -157,7 +157,11 @@ public final class DockerClient: Sendable {
     }
 
     /// A connect-time failure means the engine isn't listening — the one case the diagnostics
-    /// panel can actually fix, so it gets its own error rather than a generic NIO message.
+    /// panel can actually fix, so it gets its own error rather than a raw POSIX code.
+    ///
+    /// On Apple platforms AsyncHTTPClient runs over Network.framework, so these arrive as
+    /// `NWPOSIXError` (bridged into `NSPOSIXErrorDomain`) rather than as NIO errors — matching on
+    /// NIO types alone would have let "No such file or directory" reach the user.
     static func mapTransport(_ error: any Error, socket: DockerSocket) -> any Error {
         if error is DockerError { return error }
         if let http = error as? HTTPClientError,
@@ -167,6 +171,20 @@ public final class DockerClient: Sendable {
         if error is NIOConnectionError || error is ChannelError {
             return DockerError.notRunning(socket: socket.path)
         }
+        if let network = error as? HTTPClient.NWPOSIXError,
+           Self.connectionFailureCodes.contains(network.errorCode.rawValue) {
+            return DockerError.notRunning(socket: socket.path)
+        }
+        let posix = error as NSError
+        if posix.domain == NSPOSIXErrorDomain, Self.connectionFailureCodes.contains(Int32(posix.code)) {
+            return DockerError.notRunning(socket: socket.path)
+        }
         return error
     }
+
+    /// Everything the OS reports when a socket is absent, stale, or refusing: no such file,
+    /// not a socket, connection refused/reset, network down, broken pipe.
+    private static let connectionFailureCodes: Set<Int32> = [
+        ENOENT, ENOTSOCK, ECONNREFUSED, ECONNRESET, ECONNABORTED, ENETDOWN, EPIPE, ETIMEDOUT,
+    ]
 }

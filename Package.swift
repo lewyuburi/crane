@@ -15,6 +15,8 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swift-server/async-http-client", from: "1.36.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.7.0"),
+        // Test-only: the fake daemon that lets the socket transport be exercised for real.
+        .package(url: "https://github.com/apple/swift-nio", from: "2.101.0"),
     ],
     targets: [
         // Docker Engine API v1.51 over a UNIX socket. No UI, no process spawning: this is the
@@ -42,7 +44,15 @@ let package = Package(
             path: "Sources/CraneCLI"
         ),
 
-        .testTarget(name: "DockerAPITests", dependencies: ["DockerAPI"]),
+        .testTarget(
+            name: "DockerAPITests",
+            dependencies: [
+                "DockerAPI",
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+            ]
+        ),
         .testTarget(name: "EngineControlTests", dependencies: ["EngineControl"]),
         .testTarget(name: "CraneCoreTests", dependencies: ["CraneCore"]),
     ]

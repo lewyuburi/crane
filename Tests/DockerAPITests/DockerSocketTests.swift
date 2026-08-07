@@ -39,5 +39,8 @@ struct DockerSocketTests {
     func prefixesVersion() {
         #expect(DockerClient.prefixed("/info") == "/v1.51/info")
         #expect(DockerClient.prefixed("/v1.51/info") == "/v1.51/info")
+        // `/version` starts with "/v" but is not versioned — matching a bare "/v" would drop it.
+        #expect(DockerClient.prefixed("/version") == "/v1.51/version")
+        #expect(DockerClient.prefixed("/volumes") == "/v1.51/volumes")
     }
 }
