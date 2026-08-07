@@ -47,6 +47,8 @@ public final class EngineModel {
 
     public let engine: Engine
     public let client: DockerClient
+    /// The engine's contents. Lives here so the feed has one place to deliver events to.
+    public let workspace: WorkspaceStore
     private let feed: EventFeed
     private var feedTask: Task<Void, Never>?
 
@@ -54,6 +56,7 @@ public final class EngineModel {
         self.engine = engine
         let client = client ?? DockerClient(socket: DockerSocket(path: engine.socketPath))
         self.client = client
+        self.workspace = WorkspaceStore(client: client)
         self.feed = EventFeed(client: client)
     }
 
@@ -84,10 +87,9 @@ public final class EngineModel {
 
     /// Subscribes to the daemon's event stream. Held for the app's lifetime: this is what makes
     /// the UI react in milliseconds instead of on a timer.
-    public func startWatching(onEvent: @escaping @MainActor (DockerEvent) -> Void = { _ in },
-                              onResync: @escaping @MainActor () async -> Void = {}) {
+    public func startWatching() {
         guard feedTask == nil else { return }
-        feedTask = Task { [feed] in
+        feedTask = Task { [feed, workspace] in
             for await signal in await feed.signals() {
                 switch signal {
                 case .connected:
@@ -98,9 +100,10 @@ public final class EngineModel {
                     if let reason { failure = reason }
                     await refresh()
                 case .resync:
-                    await onResync()
+                    // Anything could have changed while the feed was down.
+                    await workspace.reloadAll()
                 case let .event(event):
-                    onEvent(event)
+                    workspace.handle(event)
                 }
             }
         }
