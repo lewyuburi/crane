@@ -42,11 +42,11 @@ public final class DockerClient: Sendable {
     }
 
     public func version() async throws -> DockerVersion {
-        try await decode(DockerVersion.self, from: data(.GET, "/version"))
+        try Self.decode(DockerVersion.self, from: await data(.GET, "/version"))
     }
 
     public func info() async throws -> DockerInfo {
-        try await decode(DockerInfo.self, from: data(.GET, "/info"))
+        try Self.decode(DockerInfo.self, from: await data(.GET, "/info"))
     }
 
     /// `GET /events` — the push feed that keeps Crane's state fresh.
@@ -86,11 +86,12 @@ public final class DockerClient: Sendable {
 
     /// Performs a request and returns its body, mapping failures onto `DockerError`.
     func data(_ method: HTTPMethod, _ path: String, query: [URLQueryItem] = [],
-              body: Data? = nil, limit: Int = 32 << 20) async throws -> Data {
+              body: Data? = nil, limit: Int = 32 << 20,
+              contentType: String = "application/json") async throws -> Data {
         var request = HTTPClientRequest(url: socket.url(Self.prefixed(path), query: query))
         request.method = method
         if let body {
-            request.headers.add(name: "Content-Type", value: "application/json")
+            request.headers.add(name: "Content-Type", value: contentType)
             request.body = .bytes(ByteBuffer(data: body))
         }
         // Both the connect and the body read can fail with the same underlying cause: over
@@ -146,14 +147,6 @@ public final class DockerClient: Sendable {
     /// quietly leave `/version` unversioned.
     static func prefixed(_ path: String) -> String {
         path.hasPrefix("/\(apiVersion)/") ? path : "/\(apiVersion)\(path)"
-    }
-
-    private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
-        do {
-            return try JSONDecoder().decode(T.self, from: data)
-        } catch {
-            throw DockerError.decoding("\(T.self): \(error)")
-        }
     }
 
     /// A connect-time failure means the engine isn't listening — the one case the diagnostics
