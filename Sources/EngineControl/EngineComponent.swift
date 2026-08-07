@@ -45,8 +45,8 @@ public enum EngineComponent: String, Sendable, CaseIterable, Identifiable, Codab
 /// Where Crane keeps the stack on disk.
 ///
 /// Everything lives under Application Support so installing needs no admin rights, with a
-/// stable `bin/` of symlinks in front of the versioned directories — that indirection is what
-/// lets an upgrade be atomic and a rollback be one symlink swap.
+/// stable `bin/` in front of the versioned directories — that indirection is what lets an
+/// upgrade be atomic and a rollback be one rewritten launcher.
 public struct StackLayout: Sendable {
     public let root: URL
 
@@ -79,7 +79,7 @@ public struct StackLayout: Sendable {
         }
     }
 
-    /// The stable path the launch agents and the app invoke.
+    /// The stable path the launch agents and the app invoke (a `LauncherScript`).
     public func link(for component: EngineComponent) -> URL {
         let name: String
         switch component {

@@ -16,7 +16,7 @@ struct Crane: AsyncParsableCommand {
         tells you when something is wrong with it.
         """,
         version: CraneVersion.stackSummary,
-        subcommands: [Status.self, Setup.self]
+        subcommands: [Status.self, Setup.self, Restore.self]
     )
 }
 
@@ -56,6 +56,19 @@ struct Setup: AsyncParsableCommand {
         let console = ConsoleProgress()
         try await Engine().provision { console.report($0) }
         print("\u{1B}[2K\rEngine ready. `docker` now talks to Crane.")
+    }
+}
+
+struct Restore: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "restore-context",
+        abstract: "Point the Docker CLI back at the context it used before Crane.")
+
+    func run() async throws {
+        let engine = Engine()
+        let previous = await engine.previousContext
+        try await engine.restorePreviousContext()
+        print("Docker context restored to `\(previous ?? "default")`. Crane's context is still registered.")
     }
 }
 

@@ -19,7 +19,7 @@ struct StackTests {
         }
     }
 
-    @Test("Versions unpack into their own directory, fronted by a stable symlink")
+    @Test("Versions unpack into their own directory, fronted by a stable launcher")
     func versionedLayout() {
         let socktainer = StackManifest.current.socktainer
         #expect(layout.directory(for: socktainer).path.hasSuffix("stack/socktainer/1.2.1"))
@@ -33,7 +33,7 @@ struct StackTests {
             .hasSuffix("stack/runtime/1.2.0/bin/container"))
     }
 
-    @Test("The Compose plugin is linked as docker-compose")
+    @Test("The Compose plugin is exposed as docker-compose")
     func composeLink() {
         #expect(layout.link(for: .compose).lastPathComponent == "docker-compose")
         #expect(layout.cliPluginsDirectory.path.hasSuffix(".docker/cli-plugins"))
@@ -140,5 +140,32 @@ struct DockerContextTests {
         let endpoint = (json["Endpoints"] as? [String: Any])?["docker"] as? [String: Any]
         #expect(endpoint?["Host"] as? String == "unix:///Users/dev/.socktainer/container.sock")
         #expect(endpoint?["SkipTLSVerify"] as? Bool == false)
+    }
+}
+
+@Suite("Stable launchers")
+struct LauncherScriptTests {
+    /// Apple's CLI finds `container-apiserver` next to its own argv[0]; a symlink in a shared
+    /// `bin/` broke `container system start` with a bare "No such file or directory".
+    @Test("The launcher execs the real path, so argv[0] is the installed binary")
+    func execsRealPath() {
+        let script = LauncherScript.contents(
+            for: URL(fileURLWithPath: "/Users/dev/Library/Application Support/Crane/stack/runtime/1.2.0/bin/container"))
+        #expect(script.hasPrefix("#!/bin/sh\n"))
+        #expect(script.contains(#"exec '/Users/dev/Library/Application Support/Crane/stack/runtime/1.2.0/bin/container' "$@""#))
+    }
+
+    @Test("Paths with spaces or quotes survive the round trip")
+    func quotesPaths() {
+        for path in ["/Users/dev/Library/Application Support/Crane/bin/docker",
+                     "/tmp/it's odd/socktainer"] {
+            let script = LauncherScript.contents(for: URL(fileURLWithPath: path))
+            #expect(LauncherScript.target(of: script) == path)
+        }
+    }
+
+    @Test("Someone else's script isn't mistaken for one of ours")
+    func ignoresForeignScripts() {
+        #expect(LauncherScript.target(of: "#!/bin/sh\necho hi\n") == nil)
     }
 }

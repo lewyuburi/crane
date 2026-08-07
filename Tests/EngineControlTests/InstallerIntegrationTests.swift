@@ -28,8 +28,9 @@ struct InstallerIntegrationTests {
         #expect(FileManager.default.isExecutableFile(atPath: executable.path))
 
         let link = layout.link(for: component)
-        let resolved = try FileManager.default.destinationOfSymbolicLink(atPath: link.path)
-        #expect(resolved == executable.path)
+        #expect(FileManager.default.isExecutableFile(atPath: link.path))
+        let script = try String(contentsOf: link, encoding: .utf8)
+        #expect(LauncherScript.target(of: script) == executable.path(percentEncoded: false))
 
         // The binary must actually report the version we pinned — a digest match proves the
         // bytes, this proves we unpacked the right bytes.

@@ -73,7 +73,38 @@ public actor Engine {
         }
         try await installAgents()
         try context.install()
+        rememberPreviousContext()
         try context.makeCurrent()
+    }
+
+    /// Puts the Docker CLI back on whatever context it used before Crane took over.
+    ///
+    /// Selecting a context is the one thing provisioning changes outside Crane's own folders, so
+    /// it has to be undoable — a user trying Crane next to another runtime must be able to go back.
+    public func restorePreviousContext() throws {
+        try context.resign(to: previousContext)
+        try? FileManager.default.removeItem(at: previousContextFile)
+    }
+
+    /// The context that was selected before Crane's, if any.
+    public var previousContext: String? {
+        guard let saved = try? String(contentsOf: previousContextFile, encoding: .utf8) else { return nil }
+        let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var previousContextFile: URL {
+        layout.root.appending(path: "previous-docker-context", directoryHint: .notDirectory)
+    }
+
+    /// Records the outgoing selection once — re-provisioning must not overwrite it with "crane".
+    private func rememberPreviousContext() {
+        let current = context.currentContext
+        guard current != DockerContext.name,
+              !(current?.hasPrefix("DOCKER_HOST=") ?? false),
+              !FileManager.default.fileExists(atPath: previousContextFile.path) else { return }
+        try? FileManager.default.createDirectory(at: layout.root, withIntermediateDirectories: true)
+        try? Data((current ?? "default").utf8).write(to: previousContextFile, options: .atomic)
     }
 
     public func install(_ component: EngineComponent,
