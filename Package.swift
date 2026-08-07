@@ -1,48 +1,33 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
+/// Crane 2.0 is layered strictly bottom-up: each target below knows nothing about the ones
+/// above it. `DockerAPI`, `AppleContainer` and `EngineControl` are the three ways Crane can
+/// touch the outside world; `CraneCore` turns them into state; `CraneUI` renders it.
 let package = Package(
     name: "Crane",
-    platforms: [
-        .macOS(.v26)
+    platforms: [.macOS(.v26)],
+    products: [
+        .library(name: "DockerAPI", targets: ["DockerAPI"]),
+        .library(name: "EngineControl", targets: ["EngineControl"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.2.0"),
-        .package(url: "https://github.com/jpsim/Yams", from: "5.1.0"),
-        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0")
+        .package(url: "https://github.com/swift-server/async-http-client", from: "1.36.0"),
     ],
     targets: [
-        // UI-agnostic core: runtime driver, compose engine, models. Shared by the app and the CLI.
+        // Docker Engine API v1.51 over a UNIX socket. No UI, no process spawning: this is the
+        // hot path for everything the app displays.
         .target(
-            name: "CraneKit",
-            dependencies: [
-                .product(name: "Yams", package: "Yams")
-            ],
-            path: "Sources/CraneKit"
+            name: "DockerAPI",
+            dependencies: [.product(name: "AsyncHTTPClient", package: "async-http-client")]
         ),
-        // The SwiftUI macOS app. Named CraneApp so its build product doesn't collide with the
-        // `crane` CLI on case-insensitive filesystems; bundle.sh installs it into Crane.app as "Crane".
-        .executableTarget(
-            name: "CraneApp",
-            dependencies: [
-                "CraneKit",
-                .product(name: "SwiftTerm", package: "SwiftTerm")
-            ],
-            path: "Sources/CraneApp"
-        ),
-        // The `crane` command-line tool.
-        .executableTarget(
-            name: "crane",
-            dependencies: [
-                "CraneKit",
-                .product(name: "ArgumentParser", package: "swift-argument-parser")
-            ],
-            path: "Sources/CraneCLI"
-        ),
-        .testTarget(
-            name: "CraneTests",
-            dependencies: ["CraneKit", "CraneApp"],
-            path: "Tests/CraneTests"
-        )
+        // The parts only Apple's own runtime can do: machines, system/kernel, DNS domains,
+        // and the PTY behind `container exec`.
+        .target(name: "AppleContainer"),
+        // Owns the stack Crane installs and supervises: runtime + socktainer + docker CLIs,
+        // their launch agents, the docker context, and the diagnostics that repair them.
+        .target(name: "EngineControl", dependencies: ["AppleContainer"]),
+        .testTarget(name: "DockerAPITests", dependencies: ["DockerAPI"]),
+        .testTarget(name: "EngineControlTests", dependencies: ["EngineControl"]),
     ]
 )
