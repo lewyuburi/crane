@@ -1,9 +1,7 @@
 # Screenshots
 
-Drop the README screenshots here:
+The 0.1.x screenshots were removed with the rewrite — they show a UI that no longer exists.
 
-- `containers.png` — the Containers list (groups + a selected container).
-- `gallery.png` — the App gallery (the "Run a container" → App Gallery sheet).
-
-Capture clean window shots with **⌘⇧4 then Space**, click the Crane window (gives a shadowed PNG),
-then move them here and commit.
+New ones land in phase 4, once the product surfaces are final. Capture clean window shots with
+**⌘⇧4 then Space**, click the Crane window (that gives a shadowed PNG), then drop them here and
+reference them from the top-level README.

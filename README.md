@@ -1,86 +1,92 @@
 # Crane
 
-A native macOS app for managing [Apple's `container`](https://github.com/apple/container) tool — an OrbStack-style GUI for running Linux containers on Apple Silicon, built with SwiftUI for macOS 26 (Liquid Glass).
+A native macOS app that turns [Apple's `container`](https://github.com/apple/container) into a
+Docker replacement you can actually work on — the engine, the socket, and the UI, managed as one.
 
-> ⚠️ **Early / experimental.** Crane drives Apple's young `container` runtime; some features (notably multi-service stacks) depend on runtime capabilities that are still maturing — see [Limitations](#limitations).
+> **Crane 2.0 is a rewrite in progress.** This branch is being built phase by phase; see
+> [Status](#status) for exactly what runs today. Crane 0.1.x is frozen at its tag.
 
-## Screenshots
+## Why a rewrite
 
-| Containers | App gallery |
-|---|---|
-| ![Containers](docs/containers.png) | ![App gallery](docs/gallery.png) |
-| ![One-click deploy](docs/deploy.png) | ![Empty state](docs/empty.png) |
+Apple's runtime is good, but on its own it isn't a Docker replacement: the ecosystem —
+Testcontainers, VS Code Dev Containers, JetBrains, `act`, Traefik — talks to a **Docker socket**,
+not to a CLI. Apple closed the Engine API as [not planned](https://github.com/apple/container/issues/66)
+and pointed at [socktainer](https://github.com/socktainer/socktainer), which serves Docker Engine
+API v1.51 on top of Apple's runtime.
 
-## Features
+So Crane stops imitating Docker and starts running the real thing:
 
-- **Containers** — start / stop / delete, live logs, an embedded shell (PTY), and live CPU/memory/network stats.
-- **Adjustable resources** — change a container's RAM/CPU with sliders; Crane recreates it in place.
-- **Docker Compose** — add a `compose.yaml` and bring projects up/down, grouped in the containers list.
-- **App gallery** — one-click deploy of ~50 popular apps (Postgres, Redis, n8n, Grafana, MinIO, …) from parametrized Compose templates. Extensible by PR — just drop a folder in [`templates/`](templates/).
-- **Images, volumes, networks, disk usage** and a version-managed runtime (download/select Apple `container` releases).
-- **Automatic DNS** — injects the host's resolvers so containers reach the internet reliably.
-
-## Install
-
-### Homebrew (cask)
-
-```sh
-brew install --cask lewyuburi/tap/crane
+```
+Crane.app                  GUI, onboarding, diagnostics, projects
+docker CLI + compose       the official binaries, on Crane's context
+socktainer                 Docker API, service DNS, restart policies, healthchecks
+apple/container            the runtime that boots the VMs
 ```
 
-### Build from source
+Crane installs, pins, supervises and repairs all four, and drives them through the socket —
+no shim, no polling, no subprocess per click.
 
-Requires macOS 26 and a Swift 6.2 toolchain (Xcode 26+).
+## Status
+
+| Phase | What it delivers | State |
+|---|---|---|
+| 1 — Engine | Install/verify/supervise the stack, launch agents, Docker context, diagnostics, onboarding, event feed | **done** |
+| 2 — Core | Containers, images, volumes, networks, logs, stats, terminal, files — all over the API | next |
+| 3 — Projects | Real `docker compose`, app gallery, health and restart as first-class UI | planned |
+| 4 — Product | Menu bar, login start, search, Machines, new screenshots | planned |
+
+## Requirements
+
+macOS 26 on Apple Silicon, and a Swift 6.2+ toolchain (Xcode 26) to build.
+
+## Build and run
 
 ```sh
-git clone https://github.com/lewyuburi/crane
-cd crane
 ./Scripts/bundle.sh --run   # builds build/Crane.app and launches it
+swift test                  # unit suites (no runtime needed)
 ```
 
-`swift test` runs the test suite.
+The app onboards a clean machine: it downloads the pinned stack into
+`~/Library/Application Support/Crane`, loads two launch agents, and registers a `crane` Docker
+context. No admin password, nothing installed system-wide.
 
-## Command line
-
-Installing the app bundles a `crane` CLI (install it from **Settings → Runtimes → Command-line tool**):
+Same thing from the terminal:
 
 ```sh
-crane ps            # list containers          crane up [path]      # compose up
-crane images        # list images              crane down           # compose down
-crane logs -f web   # follow a container's log crane templates      # list the app gallery
-crane run -p 8080:80 nginx                      crane deploy postgres
+crane status   # what's installed, what's running, what's wrong
+crane setup    # install or repair the stack, then start it
+docker ps      # the real Docker CLI, against Crane's context
 ```
 
-### Docker compatibility shim
+## The pinned stack
 
-The same binary doubles as a `docker` / `docker-compose` drop-in (opt-in toggle in the same
-settings panel — it won't shadow a real Docker install without asking). It maps the common verbs
-onto Apple's runtime:
+socktainer links `apple/container` with an **exact** version, so the pieces are versioned as one
+blessed set — [`StackManifest.swift`](Sources/EngineControl/StackManifest.swift) is the single
+source of truth. Nothing is unpacked unless its SHA-256 matches the manifest, and Apple's package
+must additionally be notarized and signed by Apple's Containerization team — requiring "Apple Root
+CA" would be meaningless, since every Developer ID chains to it.
+
+Bumping the stack means bumping that file, re-computing the digests, and running:
 
 ```sh
-docker run -d --rm -p 8080:80 nginx
-docker compose -f stack.yml up -d
-docker build -t me:1 .          # passed through to `container build`
+CRANE_INTEGRATION=1 swift test --filter InstallerIntegrationTests
 ```
 
-It's honest about the gaps: anything Apple's runtime can't do (`--add-host`, custom networks,
-multi-service `docker compose logs`) is reported with a clear warning rather than silently faked.
+which downloads the real artifacts and checks each one installs and reports the pinned version.
 
-## How it works
+## Known limits
 
-Crane shells out to the stable `container` CLI (with `--format json`) rather than its private XPC API, so it stays resilient across runtime upgrades. The container-orchestration logic lives in a UI-agnostic core (`ComposeEngine`, `ContainerControlling`, `ComposeParsing`) that's covered by tests and reusable headlessly.
+Crane is honest about what this stack can't do rather than emulating it badly:
 
-## Limitations
-
-Apple's `container` is new; a few things differ from Docker Desktop:
-
-- **One micro-VM per container** with a fixed memory size (default 1 GB) — Crane lets you raise it per container.
-- **Multi-service stacks are experimental.** Container-to-container DNS is flaky and works only on the default network; Crane runs stacks there with auto-retries, but it's not yet as reliable as Docker. ([apple/container#856](https://github.com/apple/container/issues/856))
-
-## Contributing templates
-
-Add a folder under [`templates/`](templates/) with a `template.json` (metadata + variables) and a `docker-compose.yml`, then open a PR. See existing templates for the format.
+- The Docker API is **partial**: `pause`/`unpause`, `commit`, `top`, `diff`, `search` and static
+  container IPs aren't available; `network connect/disconnect` are no-ops. Parity table in
+  [socktainer#14](https://github.com/socktainer/socktainer/issues/14).
+- [socktainer#329](https://github.com/socktainer/socktainer/issues/329): malformed EDNS0 replies
+  break name resolution inside Go-based containers.
+- Restart policies are enforced by socktainer's process; Crane's launch agent restarts it, but a
+  policy doesn't survive a host reboot the way dockerd's would.
+- `--privileged` doesn't exist on Apple's runtime; use `--cap-add`/`--cap-drop`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache-2.0 — see [LICENSE](LICENSE).

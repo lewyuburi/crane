@@ -18,9 +18,6 @@ cp ".build/release/CraneApp" "$CONTENTS/MacOS/Crane"
 echo "▸ Bundling the crane CLI…"
 cp ".build/release/crane" "$CONTENTS/Helpers/crane"
 
-echo "▸ Bundling app templates…"
-cp -R "templates" "$CONTENTS/Resources/templates"
-
 echo "▸ Generating icon…"
 ICONSET="build/Crane.iconset"
 rm -rf "$ICONSET"
@@ -29,7 +26,7 @@ iconutil -c icns "$ICONSET" -o "$CONTENTS/Resources/AppIcon.icns"
 
 # Single source of truth: the marketing version comes from CraneVersion.swift (which release.yml
 # stamps from the git tag), so the Info.plist and `crane --version` never drift apart.
-VERSION="$(grep -oE 'current = "[0-9][0-9.]*"' Sources/CraneKit/CraneVersion.swift | grep -oE '[0-9][0-9.]*')"
+VERSION="$(grep -oE 'current = "[0-9][0-9.]*"' Sources/CraneCore/CraneVersion.swift | grep -oE '[0-9][0-9.]*')"
 echo "▸ Version $VERSION"
 
 cat > "$CONTENTS/Info.plist" <<PLIST

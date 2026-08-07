@@ -24,9 +24,9 @@ jobs:
       - name: Stamp version from tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          sed -i.bak -E 's/current = "[^"]*"/current = "'"$VERSION"'"/' Sources/CraneKit/CraneVersion.swift
-          rm -f Sources/CraneKit/CraneVersion.swift.bak
-          grep current Sources/CraneKit/CraneVersion.swift
+          sed -i.bak -E 's/current = "[^"]*"/current = "'"$VERSION"'"/' Sources/CraneCore/CraneVersion.swift
+          rm -f Sources/CraneCore/CraneVersion.swift.bak
+          grep current Sources/CraneCore/CraneVersion.swift
 
       - name: Test
         run: swift test
