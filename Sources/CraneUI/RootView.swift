@@ -15,14 +15,16 @@ public struct RootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .needsSetup, .working:
                 OnboardingView()
-            case .ready, .needsAttention:
+            case .ready:
+                WorkspaceView()
+            case .needsAttention:
                 NavigationStack { DiagnosticsView() }
             }
         }
         .task { await model.refresh() }
         .task {
-            // The event feed lives as long as the window does. Containers arrive in the next
-            // phase; what it already buys is a UI that notices the daemon coming and going.
+            // The event feed lives as long as the window does: it's what keeps the container
+            // list current without a single poll.
             model.startWatching()
         }
     }

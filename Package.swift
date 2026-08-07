@@ -15,6 +15,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swift-server/async-http-client", from: "1.36.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.7.0"),
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.15.0"),
         // Test-only: the fake daemon that lets the socket transport be exercised for real.
         .package(url: "https://github.com/apple/swift-nio", from: "2.101.0"),
     ],
@@ -35,7 +36,11 @@ let package = Package(
         .target(name: "CraneCore", dependencies: ["DockerAPI", "AppleContainer", "EngineControl"]),
 
         // Design system and views.
-        .target(name: "CraneUI", dependencies: ["CraneCore"]),
+        .target(
+            name: "CraneUI",
+            dependencies: ["CraneCore", "AppleContainer",
+                           .product(name: "SwiftTerm", package: "SwiftTerm")]
+        ),
         // Thin executables.
         .executableTarget(name: "CraneApp", dependencies: ["CraneUI"]),
         .executableTarget(
