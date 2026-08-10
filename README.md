@@ -31,7 +31,7 @@ no shim, no polling, no subprocess per click.
 | Phase | What it delivers | State |
 |---|---|---|
 | 1 — Engine | Install/verify/supervise the stack, launch agents, Docker context, diagnostics, onboarding, event feed | **done** |
-| 2 — Core | Containers, images, volumes, networks, logs, stats, terminal, files — all over the API | next |
+| 2 — Core | Containers, images, volumes, networks, logs, stats, terminal, files — all over the API | **done** |
 | 3 — Projects | Real `docker compose`, app gallery, health and restart as first-class UI | planned |
 | 4 — Product | Menu bar, login start, search, Machines, new screenshots | planned |
 
@@ -73,6 +73,19 @@ CRANE_INTEGRATION=1 swift test --filter InstallerIntegrationTests
 ```
 
 which downloads the real artifacts and checks each one installs and reports the pinned version.
+
+## Working on the UI
+
+The screens render to PNGs without launching the app, so a design change can be looked at (and
+looked at again afterwards):
+
+```sh
+CRANE_SNAPSHOTS=/tmp/crane-ui swift test --filter SnapshotTests
+```
+
+Two things the harness can't show: a split view's sidebar is a vibrancy view and captures blank,
+and Liquid Glass button styles draw without their surface off-screen — which is why the primary
+actions use `.borderedProminent` and glass is reserved for the floating banner.
 
 ## Known limits
 

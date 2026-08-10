@@ -91,7 +91,7 @@ struct ContainerListView: View {
             }
         }
         .listStyle(.sidebar)
-        .environment(\.defaultMinListRowHeight, 38)
+        .environment(\.defaultMinListRowHeight, 34)
     }
 
     private func expansion(for project: String) -> Binding<Bool> {
@@ -179,13 +179,15 @@ private struct ContainerRow: View {
 
     var body: some View {
         HStack(spacing: Metric.snug) {
-            ContainerAvatar(image: container.image, state: container.state, health: container.health)
-            VStack(alignment: .leading, spacing: 0) {
+            ContainerAvatar(image: container.image, state: container.state,
+                            health: container.health, size: 24)
+            VStack(alignment: .leading, spacing: 1) {
                 Text(container.service ?? container.name)
-                    .font(.system(size: 12.5, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text(shortImage)
-                    .font(.system(size: 10.5))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -193,7 +195,7 @@ private struct ContainerRow: View {
             Spacer(minLength: Metric.tight)
             trailing
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 1)
         .contentShape(.rect)
         .onHover { hovering = $0 }
         .contextMenu { menu }
@@ -225,8 +227,8 @@ private struct ContainerRow: View {
                 RowButton("trash", "Remove") { await model.workspace.remove(container) }
             }
         } else if let port = container.publishedPorts.first?.hostPort {
-            Text(":\(String(port))")
-                .font(.system(size: 10.5, design: .monospaced))
+            Text(verbatim: ":\(port)")
+                .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.secondary)
         }
     }

@@ -72,7 +72,7 @@ struct ImagesView: View {
                 Text(pullStatus).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             } else {
                 Button("Pull", action: pull)
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.borderedProminent)
                     .disabled(pullReference.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
@@ -156,7 +156,7 @@ struct VolumesView: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(create)
                 Button("Create", action: create)
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.borderedProminent)
                     .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .padding(Metric.snug)

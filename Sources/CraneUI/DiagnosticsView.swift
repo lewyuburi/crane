@@ -92,7 +92,7 @@ private struct DiagnosticRow: View {
                 ProgressView().controlSize(.small)
             } else if check.repair != nil {
                 Button("Fix") { Task { await repair() } }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
             }
         } label: {
             Label {

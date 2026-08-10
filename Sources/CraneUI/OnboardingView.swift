@@ -52,11 +52,12 @@ public struct OnboardingView: View {
                 .symbolRenderingMode(.hierarchical)
             Text("Set up the container engine")
                 .font(.largeTitle.weight(.semibold))
-            Text("Crane runs Apple's container runtime behind a Docker-compatible socket, so "
-                 + "`docker`, Compose, Testcontainers and Dev Containers all work against it.")
+            // A single literal, not a concatenation: SwiftUI only applies Markdown — the code
+            // ticks around `docker` — to literals.
+            Text("Crane runs Apple's container runtime behind a Docker-compatible socket, so `docker`, Compose, Testcontainers and Dev Containers all work against it.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: Metric.proseWidth)
+                .frame(maxWidth: 520)
         }
         .padding(.top, Metric.loose * 1.5)
         .padding(.horizontal, Metric.loose)
@@ -74,7 +75,7 @@ public struct OnboardingView: View {
                 Text(isWorking ? "Setting up…" : "Set up Crane")
                     .frame(minWidth: 140)
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(isWorking)
             .keyboardShortcut(.defaultAction)

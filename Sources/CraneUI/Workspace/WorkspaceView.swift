@@ -2,10 +2,10 @@ import CraneCore
 import SwiftUI
 
 /// The sections of the app.
-enum WorkspaceSection: String, CaseIterable, Identifiable, Hashable {
+public enum WorkspaceSection: String, CaseIterable, Identifiable, Hashable {
     case containers, images, volumes, networks, engine
 
-    var id: String { rawValue }
+    public var id: String { rawValue }
 
     var title: String {
         switch self {
@@ -33,16 +33,21 @@ enum WorkspaceSection: String, CaseIterable, Identifiable, Hashable {
 /// The main window once the engine is up: sidebar, list, detail.
 public struct WorkspaceView: View {
     @Environment(EngineModel.self) private var model
-    @State private var section: WorkspaceSection = .containers
+    @State private var section: WorkspaceSection
     @State private var selection: Container.ID?
 
-    public init() {}
+    /// `selection` is a parameter so a window can open on a specific container — restored state,
+    /// a notification, or a snapshot that needs the detail pane populated.
+    public init(section: WorkspaceSection = .containers, selection: Container.ID? = nil) {
+        _section = State(initialValue: section)
+        _selection = State(initialValue: selection)
+    }
 
     private var store: WorkspaceStore { model.workspace }
 
     public var body: some View {
         NavigationSplitView {
-            sidebar
+            WorkspaceSidebar(section: $section)
         } content: {
             content
                 .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 520)
@@ -50,7 +55,9 @@ public struct WorkspaceView: View {
             detail
         }
         .navigationSplitViewStyle(.balanced)
-        .task { await store.reloadAll() }
+        // Only the first appearance loads: after that the event feed keeps the store current,
+        // and reloading on every window would undo that.
+        .task { if !store.isLoaded { await store.reloadAll() } }
         .overlay(alignment: .bottom) {
             if let failure = store.failure ?? model.failure {
                 Banner(message: failure) {
@@ -58,45 +65,6 @@ public struct WorkspaceView: View {
                     model.failure = nil
                 }
             }
-        }
-    }
-
-    private var sidebar: some View {
-        List(selection: $section) {
-            ForEach(["Workspace", "System"], id: \.self) { group in
-                Section(group) {
-                    ForEach(WorkspaceSection.allCases.filter { $0.group == group }) { item in
-                        Label {
-                            HStack {
-                                Text(item.title)
-                                Spacer()
-                                if let count = count(for: item) {
-                                    Text("\(count)")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        } icon: {
-                            Image(systemName: item.symbol)
-                        }
-                        .tag(item)
-                    }
-                }
-            }
-        }
-        .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
-        .navigationTitle("Crane")
-        .safeAreaInset(edge: .bottom) { EngineBadge() }
-    }
-
-    private func count(for section: WorkspaceSection) -> Int? {
-        switch section {
-        case .containers: return store.containers.isEmpty ? nil : store.containers.count
-        case .images: return store.images.isEmpty ? nil : store.images.count
-        case .volumes: return store.volumes.isEmpty ? nil : store.volumes.count
-        case .networks: return store.networks.isEmpty ? nil : store.networks.count
-        case .engine: return nil
         }
     }
 
@@ -123,6 +91,42 @@ public struct WorkspaceView: View {
             }
         } else {
             ContentUnavailableView("Nothing selected", systemImage: section.symbol)
+        }
+    }
+}
+
+/// The first column: where in the app you are, and whether the engine is up.
+struct WorkspaceSidebar: View {
+    @Environment(EngineModel.self) private var model
+    @Binding var section: WorkspaceSection
+
+    private var store: WorkspaceStore { model.workspace }
+
+    var body: some View {
+        List(selection: $section) {
+            ForEach(["Workspace", "System"], id: \.self) { group in
+                Section(group) {
+                    ForEach(WorkspaceSection.allCases.filter { $0.group == group }) { item in
+                        Label(item.title, systemImage: item.symbol)
+                            .badge(count(for: item) ?? 0)
+                            .tag(item)
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
+        .navigationTitle("Crane")
+        .safeAreaInset(edge: .bottom) { EngineBadge() }
+    }
+
+    private func count(for section: WorkspaceSection) -> Int? {
+        switch section {
+        case .containers: return store.containers.isEmpty ? nil : store.containers.count
+        case .images: return store.images.isEmpty ? nil : store.images.count
+        case .volumes: return store.volumes.isEmpty ? nil : store.volumes.count
+        case .networks: return store.networks.isEmpty ? nil : store.networks.count
+        case .engine: return nil
         }
     }
 }

@@ -6,7 +6,7 @@ import SwiftUI
 /// The detail pane for one container.
 struct ContainerDetailView: View {
     enum Tab: String, CaseIterable, Identifiable {
-        case info = "Info", stats = "Stats", logs = "Logs", terminal = "Terminal"
+        case info = "Info", stats = "Stats", logs = "Logs", terminal = "Terminal", files = "Files"
         var id: String { rawValue }
     }
 
@@ -32,6 +32,13 @@ struct ContainerDetailView: View {
                     TerminalTab(container: container)
                 } else {
                     notRunning("Start the container to open a shell.")
+                }
+            case .files:
+                if container.isRunning {
+                    FilesTab(container: container)
+                } else {
+                    // The archive endpoint needs a running container, and so does `ls`.
+                    notRunning("Files can only be browsed while the container runs.")
                 }
             }
         }

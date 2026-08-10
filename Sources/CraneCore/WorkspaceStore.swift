@@ -57,6 +57,17 @@ public final class WorkspaceStore {
         isLoaded = true
     }
 
+    /// Fills the store directly. The seam previews, snapshots and tests use so a view can be
+    /// rendered without a live engine — the app itself always goes through `reloadAll`.
+    public func seed(containers: [Container] = [], images: [ImageSummary] = [],
+                     volumes: [VolumeSummary] = [], networks: [NetworkSummary] = []) {
+        catalog.replace(with: containers)
+        self.images = images
+        self.volumes = volumes
+        self.networks = networks
+        isLoaded = true
+    }
+
     /// Feeds one event through the reducer and schedules whatever it couldn't answer alone.
     public func handle(_ event: DockerEvent) {
         schedule(catalog.apply(event))

@@ -26,7 +26,7 @@ public enum EngineComponent: String, Sendable, CaseIterable, Identifiable, Codab
         switch self {
         case .runtime: return "Runs the Linux VMs behind every container."
         case .socktainer: return "Serves the Docker API that tools connect to."
-        case .docker: return "The `docker` command."
+        case .docker: return "The docker command itself."
         case .compose: return "Brings multi-service projects up."
         }
     }

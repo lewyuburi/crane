@@ -60,5 +60,6 @@ let package = Package(
         ),
         .testTarget(name: "EngineControlTests", dependencies: ["EngineControl"]),
         .testTarget(name: "CraneCoreTests", dependencies: ["CraneCore"]),
+        .testTarget(name: "CraneUITests", dependencies: ["CraneUI"]),
     ]
 )
