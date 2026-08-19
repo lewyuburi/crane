@@ -28,7 +28,7 @@ public struct PortBinding: Sendable, Equatable, Hashable, Decodable {
 }
 
 /// A bind mount or volume attached to a container.
-public struct MountPoint: Sendable, Equatable, Decodable {
+public struct MountPoint: Sendable, Equatable, Hashable, Decodable {
     public let source: String
     public let destination: String
     public let name: String?
@@ -44,6 +44,13 @@ public struct MountPoint: Sendable, Equatable, Decodable {
         destination = try c.decodeIfPresent(String.self, forKey: .destination) ?? ""
         name = try c.decodeIfPresent(String.self, forKey: .name)
         readOnly = !(try c.decodeIfPresent(Bool.self, forKey: .rw) ?? true)
+    }
+
+    public init(source: String, destination: String, name: String? = nil, readOnly: Bool = false) {
+        self.source = source
+        self.destination = destination
+        self.name = name
+        self.readOnly = readOnly
     }
 }
 

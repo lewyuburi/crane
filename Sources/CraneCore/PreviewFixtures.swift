@@ -22,6 +22,8 @@ public enum PreviewFixtures {
         Container(id: "c3d4e5f6a1b2", name: "shop-db-1", image: "docker.io/library/postgres:17-alpine",
                   state: .running, statusText: "Up 4 hours", health: .healthy,
                   ports: [PortBinding(containerPort: 5432, hostPort: 5432)],
+                  mounts: [MountPoint(source: "/Users/dev/Library/Application Support/com.apple.container/volumes/shop_db",
+                                      destination: "/var/lib/postgresql/data", name: "shop_db")],
                   created: .now.addingTimeInterval(-14_500),
                   labels: ["com.docker.compose.project": "shop", "com.docker.compose.service": "db"]),
         Container(id: "d4e5f6a1b2c3", name: "shop-cache-1", image: "redis:7-alpine",

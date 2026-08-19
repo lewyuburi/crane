@@ -67,3 +67,32 @@ public struct DetailRow: View {
         }
     }
 }
+
+/// Filter field that belongs to a list column. `.searchable(placement: .toolbar)` on a
+/// `NavigationSplitView` content pane lands in the unified titlebar next to the detail
+/// actions, which is how Filter showed up beside the trash on Images and Volumes.
+struct ColumnFilter: View {
+    @Binding var text: String
+    var prompt: String = "Filter"
+
+    var body: some View {
+        HStack(spacing: Metric.tight) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField(prompt, text: $text)
+                .textFieldStyle(.plain)
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, Metric.snug)
+        .padding(.vertical, 7)
+        .background(.bar)
+    }
+}

@@ -62,9 +62,9 @@ struct ContainerListView: View {
                 .environment(\.defaultMinListRowHeight, 34)
             }
         }
-        .searchable(text: $query, placement: .toolbar, prompt: "Filter")
         .navigationTitle("Containers")
         .navigationSubtitle(subtitle)
+        .safeAreaInset(edge: .top, spacing: 0) { ColumnFilter(text: $query) }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Picker("Show", selection: $filter) {

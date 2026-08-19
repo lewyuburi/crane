@@ -111,11 +111,16 @@ public struct WorkspaceView: View {
     private var resourceDetail: some View {
         switch section {
         case .containers: containerDetail
-        case .images: ImageDetailView(selection: $imageSelection)
-        case .volumes: VolumeDetailView(selection: $volumeSelection)
-        case .networks: NetworkDetailView(selection: $networkSelection)
+        case .images: ImageDetailView(selection: $imageSelection, onSelectContainer: reveal)
+        case .volumes: VolumeDetailView(selection: $volumeSelection, onSelectContainer: reveal)
+        case .networks: NetworkDetailView(selection: $networkSelection, onSelectContainer: reveal)
         case .engine: EmptyView()
         }
+    }
+
+    private func reveal(_ id: Container.ID) {
+        section = .containers
+        selection = .container(id)
     }
 
     @ViewBuilder

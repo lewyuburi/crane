@@ -2,7 +2,20 @@ import DockerAPI
 import Foundation
 import Observation
 
-/// A live tail of one container's output.
+/// One stream that a `LogSession` tails. A stack view passes one source per service.
+public struct LogSource: Sendable {
+    public let containerID: String
+    public let label: String
+    public let tty: Bool
+
+    public init(containerID: String, label: String = "", tty: Bool = false) {
+        self.containerID = containerID
+        self.label = label
+        self.tty = tty
+    }
+}
+
+/// A live tail of one or more containers' output.
 ///
 /// The text itself never accumulates here: chunks are handed straight to whoever is drawing them
 /// (an AppKit text view that trims its own backing store). Keeping megabytes of log in an
@@ -14,8 +27,7 @@ public final class LogSession {
     public var failure: String?
 
     private let client: DockerClient
-    private let containerID: String
-    private let tty: Bool
+    private let sources: [LogSource]
     /// `nonisolated(unsafe)` so `deinit` can cancel it: a `Task` handle is safe to cancel from
     /// any thread, and a session that outlives its view must not keep streaming.
     nonisolated(unsafe) private var task: Task<Void, Never>?
@@ -23,8 +35,12 @@ public final class LogSession {
 
     public init(client: DockerClient, containerID: String, tty: Bool = false) {
         self.client = client
-        self.containerID = containerID
-        self.tty = tty
+        self.sources = [LogSource(containerID: containerID, tty: tty)]
+    }
+
+    public init(client: DockerClient, sources: [LogSource]) {
+        self.client = client
+        self.sources = sources
     }
 
     /// Starts streaming, delivering chunks to `sink`. Re-calling replaces the sink and restarts.
@@ -33,19 +49,27 @@ public final class LogSession {
         self.sink = sink
         isStreaming = true
         failure = nil
-        task = Task { [client, containerID, tty] in
-            do {
-                for try await chunk in client.logs(containerID, follow: true, tail: tail, tty: tty) {
-                    guard !Task.isCancelled else { break }
-                    // Every chunk is delivered, always: "follow" is about where the view scrolls,
-                    // not about dropping output. Discarding here would leave a permanent hole in
-                    // the log that nothing tells the user about.
-                    self.sink?(chunk.text)
+        let prefix = sources.count > 1
+        task = Task { [client, sources] in
+            await withTaskGroup(of: Void.self) { group in
+                for source in sources {
+                    group.addTask {
+                        do {
+                            for try await chunk in client.logs(source.containerID, follow: true,
+                                                               tail: tail, tty: source.tty) {
+                                guard !Task.isCancelled else { break }
+                                let text = prefix && !source.label.isEmpty
+                                    ? "[\(source.label)] \(chunk.text)"
+                                    : chunk.text
+                                await sink(text)
+                            }
+                        } catch {
+                            await MainActor.run { self.failure = error.localizedDescription }
+                        }
+                    }
                 }
-            } catch {
-                failure = error.localizedDescription
             }
-            isStreaming = false
+            await MainActor.run { self.isStreaming = false }
         }
     }
 

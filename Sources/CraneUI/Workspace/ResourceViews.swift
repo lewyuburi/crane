@@ -61,18 +61,14 @@ struct ImagesView: View {
         }
         .navigationTitle("Images")
         .navigationSubtitle(store.images.isEmpty ? "" : "\(store.images.count) · \(byteString(totalSize))")
-        .searchable(text: $query, placement: .toolbar, prompt: "Filter")
+        .safeAreaInset(edge: .top, spacing: 0) { ColumnFilter(text: $query) }
         .safeAreaInset(edge: .bottom) { pullBar }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if !selection.isEmpty {
-                    Button(role: .destructive) { remove(selection) } label: {
-                        Label("Remove \(selection.count)", systemImage: "trash")
-                    }
+                    Button("Remove", role: .destructive) { remove(selection) }
                 }
-                Button { Task { await store.pruneImages() } } label: {
-                    Label("Prune unused", systemImage: "trash.slash")
-                }
+                Button("Prune unused") { Task { await store.pruneImages() } }
             }
         }
     }
@@ -130,12 +126,18 @@ struct ImagesView: View {
 struct ImageDetailView: View {
     @Environment(EngineModel.self) private var model
     @Binding var selection: Set<ImageSummary.ID>
+    var onSelectContainer: (Container.ID) -> Void = { _ in }
 
     private var store: WorkspaceStore { model.workspace }
 
     private var image: ImageSummary? {
         guard selection.count == 1, let id = selection.first else { return nil }
         return store.images.first { $0.id == id }
+    }
+
+    private var users: [Container] {
+        guard let image else { return [] }
+        return store.containers.filter { $0.uses(image) }
     }
 
     var body: some View {
@@ -150,15 +152,25 @@ struct ImageDetailView: View {
                                   monospaced: true)
                         DetailRow("Size", byteString(image.size), monospaced: true)
                         DetailRow("Created", image.created.formatted(date: .abbreviated, time: .shortened))
-                        if image.containers >= 0 {
-                            DetailRow("In use", image.containers == 0 ? "Unused" : "\(image.containers) containers")
-                        }
+                        DetailRow("In use", users.isEmpty ? "Unused" : "\(users.count) containers")
                     }
                     let tags = image.repoTags.filter { $0 != "<none>:<none>" }
                     if !tags.isEmpty {
                         Section("Tags") {
                             ForEach(tags, id: \.self) { tag in
                                 DetailRow("Tag", tag, monospaced: true)
+                            }
+                        }
+                    }
+                    if !users.isEmpty {
+                        Section("Using") {
+                            ForEach(users) { container in
+                                Button {
+                                    onSelectContainer(container.id)
+                                } label: {
+                                    DetailRow(container.service ?? container.name, container.state.label)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -173,16 +185,6 @@ struct ImageDetailView: View {
                 .formStyle(.grouped)
                 .navigationTitle(image.displayName)
                 .navigationSubtitle(byteString(image.size))
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Remove", systemImage: "trash", role: .destructive) {
-                            Task {
-                                await store.removeImage(image)
-                                selection.remove(image.id)
-                            }
-                        }
-                    }
-                }
             } else if selection.count > 1 {
                 ContentUnavailableView("\(selection.count) images selected", systemImage: "square.stack.3d.up",
                                        description: Text("Pick one to see tags and size, or remove them from the list."))
@@ -266,7 +268,7 @@ struct VolumesView: View {
         }
         .navigationTitle("Volumes")
         .navigationSubtitle(store.volumes.isEmpty ? "" : "\(store.volumes.count) volumes")
-        .searchable(text: $query, placement: .toolbar, prompt: "Filter")
+        .safeAreaInset(edge: .top, spacing: 0) { ColumnFilter(text: $query) }
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: Metric.snug) {
                 TextField("New volume name", text: $newName)
@@ -282,9 +284,7 @@ struct VolumesView: View {
         .toolbar {
             if !selection.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
-                    Button(role: .destructive) { remove(selection) } label: {
-                        Label("Remove \(selection.count)", systemImage: "trash")
-                    }
+                    Button("Remove", role: .destructive) { remove(selection) }
                 }
             }
         }
@@ -312,12 +312,18 @@ struct VolumesView: View {
 struct VolumeDetailView: View {
     @Environment(EngineModel.self) private var model
     @Binding var selection: Set<VolumeSummary.ID>
+    var onSelectContainer: (Container.ID) -> Void = { _ in }
 
     private var store: WorkspaceStore { model.workspace }
 
     private var volume: VolumeSummary? {
         guard selection.count == 1, let id = selection.first else { return nil }
         return store.volumes.first { $0.id == id }
+    }
+
+    private var users: [Container] {
+        guard let volume else { return [] }
+        return store.containers.filter { $0.uses(volume) }
     }
 
     var body: some View {
@@ -333,26 +339,32 @@ struct VolumeDetailView: View {
                             DetailRow("Compose project", project)
                         }
                         if !volume.createdAt.isEmpty {
-                            DetailRow("Created", volume.createdAt)
+                            DetailRow("Created", formattedDate(volume.createdAt))
                         }
                     }
                     Section("Mount") {
                         DetailRow("Path", volume.mountpoint, monospaced: true)
+                    }
+                    if !users.isEmpty {
+                        Section("Using") {
+                            ForEach(users) { container in
+                                Button {
+                                    onSelectContainer(container.id)
+                                } label: {
+                                    DetailRow(container.service ?? container.name, container.state.label)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
                     }
                 }
                 .formStyle(.grouped)
                 .navigationTitle(volume.name)
                 .navigationSubtitle(volume.driver)
                 .toolbar {
-                    ToolbarItemGroup(placement: .primaryAction) {
+                    ToolbarItem(placement: .primaryAction) {
                         Button("Reveal in Finder", systemImage: "folder") {
                             NSWorkspace.shared.selectFile(volume.mountpoint, inFileViewerRootedAtPath: "")
-                        }
-                        Button("Remove", systemImage: "trash", role: .destructive) {
-                            Task {
-                                await store.removeVolume(volume)
-                                selection.remove(volume.id)
-                            }
                         }
                     }
                 }
@@ -382,6 +394,13 @@ struct VolumeDetailView: View {
             Spacer()
         }
         .padding(.vertical, 4)
+    }
+
+    private func formattedDate(_ raw: String) -> String {
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = withFraction.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+        return date?.formatted(date: .abbreviated, time: .shortened) ?? raw
     }
 }
 
@@ -449,13 +468,11 @@ struct NetworksView: View {
         }
         .navigationTitle("Networks")
         .navigationSubtitle(store.networks.isEmpty ? "" : "\(store.networks.count) networks")
-        .searchable(text: $query, placement: .toolbar, prompt: "Filter")
+        .safeAreaInset(edge: .top, spacing: 0) { ColumnFilter(text: $query) }
         .toolbar {
             if !removableSelection.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
-                    Button(role: .destructive) { remove(selection) } label: {
-                        Label("Remove \(removableSelection.count)", systemImage: "trash")
-                    }
+                    Button("Remove", role: .destructive) { remove(selection) }
                 }
             }
         }
@@ -477,6 +494,7 @@ struct NetworksView: View {
 struct NetworkDetailView: View {
     @Environment(EngineModel.self) private var model
     @Binding var selection: Set<NetworkSummary.ID>
+    var onSelectContainer: (Container.ID) -> Void = { _ in }
 
     private var store: WorkspaceStore { model.workspace }
 
@@ -506,7 +524,16 @@ struct NetworkDetailView: View {
                     if !network.attached.isEmpty {
                         Section("Attached") {
                             ForEach(network.attached.keys.sorted(), id: \.self) { name in
-                                DetailRow(name, network.attached[name] ?? "", monospaced: true)
+                                if let container = store.containers.first(where: { $0.name == name }) {
+                                    Button {
+                                        onSelectContainer(container.id)
+                                    } label: {
+                                        DetailRow(name, network.attached[name] ?? "", monospaced: true)
+                                    }
+                                    .buttonStyle(.plain)
+                                } else {
+                                    DetailRow(name, network.attached[name] ?? "", monospaced: true)
+                                }
                             }
                         }
                     }
@@ -514,18 +541,6 @@ struct NetworkDetailView: View {
                 .formStyle(.grouped)
                 .navigationTitle(network.name)
                 .navigationSubtitle(network.subnet ?? network.driver)
-                .toolbar {
-                    if !network.isBuiltIn {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button("Remove", systemImage: "trash", role: .destructive) {
-                                Task {
-                                    await store.removeNetwork(network)
-                                    selection.remove(network.id)
-                                }
-                            }
-                        }
-                    }
-                }
             } else if selection.count > 1 {
                 ContentUnavailableView("\(selection.count) networks selected", systemImage: "network",
                                        description: Text("Pick one to see its subnet and attachments."))

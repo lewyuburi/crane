@@ -96,14 +96,29 @@ struct LogConsole: NSViewRepresentable {
 /// The Logs tab: the console plus the controls that make a live tail usable.
 struct LogsTab: View {
     @Environment(EngineModel.self) private var model
-    let container: Container
+    let sources: [LogSource]
     @State private var session: LogSession?
     @State private var fontSize: CGFloat = 12
     @State private var follows = true
 
+    init(container: Container) {
+        sources = [LogSource(containerID: container.id)]
+    }
+
+    init(project: Project) {
+        sources = project.containers.map {
+            LogSource(containerID: $0.id, label: $0.service ?? $0.name)
+        }
+    }
+
+    private var sourceKey: String { sources.map(\.containerID).joined(separator: ",") }
+
     var body: some View {
         Group {
-            if let session {
+            if sources.isEmpty {
+                ContentUnavailableView("No services", systemImage: "text.alignleft",
+                                       description: Text("This stack has no containers to tail."))
+            } else if let session {
                 LogConsole(session: session, fontSize: fontSize, follows: follows)
             } else {
                 Color.clear
@@ -133,12 +148,11 @@ struct LogsTab: View {
                 }
             }
         }
-        .task(id: container.id) {
-            let session = LogSession(client: model.client, containerID: container.id)
+        .task(id: sourceKey) {
+            guard !sources.isEmpty else { return }
+            let session = LogSession(client: model.client, sources: sources)
             self.session = session
-            // The session is stopped when the view goes away or the container changes.
             defer { session.stop() }
-            // Keep the task alive so `defer` runs on cancellation.
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3600))
             }

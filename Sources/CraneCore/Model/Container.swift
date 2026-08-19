@@ -29,12 +29,14 @@ public struct Container: Identifiable, Sendable, Equatable, Hashable {
     public let id: String
     public var name: String
     public var image: String
+    public var imageID: String
     public var state: RunState
     /// The daemon's own phrasing, e.g. "Up 3 seconds".
     public var statusText: String
     public var health: Health?
     public var exitCode: Int?
     public var ports: [PortBinding]
+    public var mounts: [MountPoint]
     public var created: Date
     /// Network name → address.
     public var addresses: [String: String]
@@ -49,32 +51,56 @@ public struct Container: Identifiable, Sendable, Equatable, Hashable {
         ports.filter { $0.hostPort != nil }.sorted { ($0.hostPort ?? 0) < ($1.hostPort ?? 0) }
     }
 
+    /// True when this row was created from `image` — tag match or image ID prefix.
+    public func uses(_ image: ImageSummary) -> Bool {
+        if !imageID.isEmpty {
+            let have = imageID.replacingOccurrences(of: "sha256:", with: "")
+            let want = image.id.replacingOccurrences(of: "sha256:", with: "")
+            if !want.isEmpty, have.hasPrefix(want) || want.hasPrefix(have.prefix(12)) { return true }
+        }
+        let tags = image.repoTags.filter { $0 != "<none>:<none>" }
+        if tags.contains(self.image) || image.displayName == self.image { return true }
+        return tags.contains { tag in
+            tag.hasSuffix("/\(self.image)") || self.image.hasSuffix("/\(tag)") || self.image.hasSuffix(":\(tag)")
+        }
+    }
+
+    public func uses(_ volume: VolumeSummary) -> Bool {
+        mounts.contains { $0.name == volume.name || $0.source == volume.mountpoint }
+    }
+
     public init(_ summary: ContainerSummary) {
         id = summary.id
         name = summary.name
         image = summary.image
+        imageID = summary.imageID
         state = RunState(summary.state)
         statusText = summary.status
         health = nil
         exitCode = nil
         ports = summary.ports
+        mounts = summary.mounts
         created = summary.created
         addresses = summary.addresses
         labels = summary.labels
     }
 
-    public init(id: String, name: String, image: String = "", state: RunState = .running,
+    public init(id: String, name: String, image: String = "", imageID: String = "",
+                state: RunState = .running,
                 statusText: String = "", health: Health? = nil, exitCode: Int? = nil,
-                ports: [PortBinding] = [], created: Date = .distantPast,
+                ports: [PortBinding] = [], mounts: [MountPoint] = [],
+                created: Date = .distantPast,
                 addresses: [String: String] = [:], labels: [String: String] = [:]) {
         self.id = id
         self.name = name
         self.image = image
+        self.imageID = imageID
         self.state = state
         self.statusText = statusText
         self.health = health
         self.exitCode = exitCode
         self.ports = ports
+        self.mounts = mounts
         self.created = created
         self.addresses = addresses
         self.labels = labels
