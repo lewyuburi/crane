@@ -8,6 +8,8 @@ public enum EngineError: Error, LocalizedError, Equatable {
     case untrustedPackage(String)
     case unpack(String)
     case launchd(String)
+    /// A Docker CLI Crane didn't install is already on PATH; the pack must not replace it.
+    case cliPackBlocked(String)
 
     public var errorDescription: String? {
         switch self {
@@ -22,6 +24,9 @@ public enum EngineError: Error, LocalizedError, Equatable {
             return detail
         case let .launchd(detail):
             return detail
+        case let .cliPackBlocked(path):
+            return "A Docker CLI is already installed at \(path). Crane won't replace it — "
+                + "point that CLI at Crane with the crane Docker context."
         }
     }
 }
@@ -116,10 +121,6 @@ public actor StackInstaller {
               let result = try? await ProcessRunner.run(path, component.versionArguments),
               result.succeeded else { return nil }
         return VersionText.semver(in: result.out)
-    }
-
-    public func remove(_ artifact: Artifact) throws {
-        try? fm.removeItem(at: layout.directory(for: artifact))
     }
 
     // MARK: - Steps
@@ -266,7 +267,7 @@ public enum PackageSignature {
     }
 }
 
-/// Pure version-string handling shared by the installer and the diagnostics.
+/// Pure version-string handling shared by the installer and Engine status.
 public enum VersionText {
     /// Pulls the first `1.2.3` out of a tool's `--version` chatter.
     public static func semver(in output: String) -> String? {
@@ -275,16 +276,5 @@ public enum VersionText {
             return trimmed.isEmpty ? nil : trimmed
         }
         return String(output[range])
-    }
-
-    /// Compares two dotted versions numerically (`1.10.0` > `1.9.0`, which a string compare gets wrong).
-    public static func compare(_ lhs: String, _ rhs: String) -> ComparisonResult {
-        let l = lhs.split(separator: ".").map { Int($0.prefix(while: \.isNumber)) ?? 0 }
-        let r = rhs.split(separator: ".").map { Int($0.prefix(while: \.isNumber)) ?? 0 }
-        for i in 0..<max(l.count, r.count) {
-            let a = i < l.count ? l[i] : 0, b = i < r.count ? r[i] : 0
-            if a != b { return a < b ? .orderedAscending : .orderedDescending }
-        }
-        return .orderedSame
     }
 }

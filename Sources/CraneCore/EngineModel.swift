@@ -5,8 +5,8 @@ import Observation
 
 /// The app's view of the engine: what state the stack is in, and the few actions that change it.
 ///
-/// Everything the UI needs about the stack goes through here, so onboarding, the diagnostics
-/// panel and the menu bar can never disagree about whether the engine is ready.
+/// Everything the UI needs about the stack goes through here, so onboarding and the Engine pane
+/// can never disagree about whether the engine is ready.
 @MainActor
 @Observable
 public final class EngineModel {
@@ -38,10 +38,10 @@ public final class EngineModel {
 
     public private(set) var phase: Phase = .checking
     public private(set) var status: EngineStatus?
-    /// Live install progress, keyed by component, while `phase == .working`.
+    /// Live install progress, keyed by component, while `phase == .working` or a CLI pack download.
     public private(set) var progress: [EngineComponent: StackInstaller.Progress] = [:]
-    /// The daemon's own version report, once it answers.
-    public private(set) var daemonVersion: DockerVersion?
+    /// True while the optional CLI pack is downloading — the engine stays `.ready`.
+    public private(set) var cliBusy = false
     /// Set when an action fails; the UI shows it and clears it.
     public var failure: String?
 
@@ -62,21 +62,59 @@ public final class EngineModel {
 
     public var diagnostics: [Diagnostic] { status?.diagnostics ?? [] }
 
+    /// Ready engine, no Crane CLI pack, nothing foreign on PATH — TipKit may offer the pack.
+    public var shouldOfferCLITip: Bool {
+        phase == .ready
+            && status?.cliPackInstalled == false
+            && status?.cliPackBlocked == false
+    }
+
     /// Re-reads the stack's state. Cheap; safe to call whenever a window appears.
     public func refresh() async {
         let status = await engine.status()
         self.status = status
         phase = Phase(status)
-        if phase == .ready {
-            daemonVersion = try? await client.version()
-        }
     }
 
-    /// Installs and wires up everything. This is both "get started" and "repair it all".
-    public func provision() async {
+    /// Installs the engine. Optionally continues with the CLI pack when the checkbox was on.
+    public func provision(includeCLI: Bool = false) async {
         await perform { engine, report in
             try await engine.provision(onProgress: report)
         }
+        if includeCLI, failure == nil {
+            await provisionCLI()
+        }
+    }
+
+    /// Downloads Docker CLI + Compose without leaving the workspace for onboarding.
+    public func provisionCLI() async {
+        if status?.cliPackBlocked == true, let path = status?.foreignDockerPath {
+            failure = EngineError.cliPackBlocked(path).errorDescription
+            return
+        }
+        failure = nil
+        cliBusy = true
+        progress = [:]
+        let report: @Sendable (StackInstaller.Progress) -> Void = { [weak self] update in
+            Task { @MainActor in self?.progress[update.component] = update }
+        }
+        do {
+            try await engine.provisionCLI(onProgress: report)
+        } catch {
+            failure = error.localizedDescription
+        }
+        progress = [:]
+        cliBusy = false
+        await refresh()
+    }
+
+    public func setUseCraneAsEngine(_ enabled: Bool) async {
+        do {
+            try await engine.setUseCraneAsEngine(enabled)
+        } catch {
+            failure = error.localizedDescription
+        }
+        await refresh()
     }
 
     public func repair(_ action: RepairAction) async {
@@ -131,4 +169,14 @@ public final class EngineModel {
         progress = [:]
         await refresh()
     }
+
+    /// Snapshot and canvas seeding. Does not talk to a live engine.
+    public func seedPreview(status: EngineStatus, phase: Phase) {
+        self.status = status
+        self.phase = phase
+        previewLocked = true
+    }
+
+    /// When true, EngineView must not `refresh()` over seeded preview state.
+    public private(set) var previewLocked = false
 }

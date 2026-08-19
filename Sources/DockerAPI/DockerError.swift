@@ -3,7 +3,7 @@ import Foundation
 /// Everything that can go wrong between Crane and the daemon.
 ///
 /// The distinction that matters to the UI is *whose* fault it is: `notRunning` is a stack
-/// problem the diagnostics panel can repair, `api` is a request the daemon rejected, and
+/// problem the Engine pane can repair, `api` is a request the daemon rejected, and
 /// `unsupported` is a capability Apple's runtime genuinely lacks — never dressed up as success.
 public enum DockerError: Error, LocalizedError, Equatable, Sendable {
     /// No socket file, or nothing accepting connections on it.

@@ -1,7 +1,7 @@
 name: Release
 
 # Tag a version to build, package, publish, and bump the Homebrew cask:
-#   git tag v0.1.2 && git push origin v0.1.2
+#   git tag v2.0.0 && git push origin v2.0.0
 on:
   push:
     tags: ["v*"]
@@ -70,35 +70,46 @@ jobs:
             Native macOS app for Apple's `container` tool. **Apple Silicon only** — Apple's
             containerization runs only on arm64 Macs.
 
-            **Install via Homebrew:**
+            **Install and update via Homebrew:**
             ```
             brew install --cask lewyuburi/tap/crane
+            brew upgrade --cask crane
             ```
 
             Or download the `.dmg` below and drag Crane to Applications.
 
             DMG SHA-256: `${{ steps.pkg.outputs.dmg_sha }}`
 
-  # Auto-bumps Casks/crane.rb in the tap repo. Requires a repo secret TAP_TOKEN — a PAT with
-  # contents:write on lewyuburi/homebrew-tap. If the secret is absent the job is skipped.
+  # Publishes Casks/crane.rb to the tap with this tag’s version and DMG digest.
+  # Requires TAP_TOKEN — a PAT with contents:write on lewyuburi/homebrew-tap.
   bump-cask:
     needs: release
     runs-on: ubuntu-latest
     if: ${{ github.repository == 'lewyuburi/crane' }}
     steps:
+      - name: Check out Crane
+        uses: actions/checkout@v4
+        with:
+          path: crane
+
       - name: Check out the tap
         uses: actions/checkout@v4
         with:
           repository: lewyuburi/homebrew-tap
           token: ${{ secrets.TAP_TOKEN }}
+          path: tap
 
-      - name: Bump cask
+      - name: Publish cask
         env:
           VERSION: ${{ needs.release.outputs.version }}
           SHA: ${{ needs.release.outputs.dmg_sha }}
         run: |
-          sed -i -E "s/version \"[^\"]+\"/version \"${VERSION}\"/" Casks/crane.rb
-          sed -i -E "s/sha256 \"[^\"]+\"/sha256 \"${SHA}\"/" Casks/crane.rb
+          cp crane/Casks/crane.rb tap/Casks/crane.rb
+          sed -i -E "s/version \"[^\"]+\"/version \"${VERSION}\"/" tap/Casks/crane.rb
+          sed -i -E "s/sha256 \"[^\"]+\"/sha256 \"${SHA}\"/" tap/Casks/crane.rb
+          cd tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "crane ${VERSION}" && git push
+          git add Casks/crane.rb
+          git commit -m "crane ${VERSION}"
+          git push

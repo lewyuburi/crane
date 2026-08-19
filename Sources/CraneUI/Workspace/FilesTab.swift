@@ -46,7 +46,7 @@ struct FilesTab: View {
         }
         .task(id: container.id) {
             browser = FileBrowser(client: model.client,
-                                  runtime: await model.engine.runtime,
+                                  runtime: model.engine.runtime,
                                   containerID: container.id)
             await load("/")
         }

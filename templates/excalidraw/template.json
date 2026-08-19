@@ -1,3 +1,0 @@
-{ "id":"excalidraw","name":"Excalidraw","tagline":"Virtual hand-drawn style whiteboard for diagrams and sketches.",
-  "category":"Apps","logo":"excalidraw","links":{"website":"https://excalidraw.com"},"tags":["diagram","whiteboard","drawing"],"primaryPort":"PORT",
-  "variables":[{"key":"PORT","label":"Host port","default":"8099"}] }

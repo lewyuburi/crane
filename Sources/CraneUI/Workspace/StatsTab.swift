@@ -25,11 +25,11 @@ struct StatsTab: View {
                           tint: .green)
                 }
                 Section("Totals since start") {
-                    LabeledContent("Network in") { Text(byteString(sample.networkRx)).monospacedDigit() }
-                    LabeledContent("Network out") { Text(byteString(sample.networkTx)).monospacedDigit() }
-                    LabeledContent("Disk read") { Text(byteString(sample.blockRead)).monospacedDigit() }
-                    LabeledContent("Disk written") { Text(byteString(sample.blockWrite)).monospacedDigit() }
-                    LabeledContent("Processes") { Text("\(sample.processes)").monospacedDigit() }
+                    DetailRow("Network in", byteString(sample.networkRx), monospaced: true)
+                    DetailRow("Network out", byteString(sample.networkTx), monospaced: true)
+                    DetailRow("Disk read", byteString(sample.blockRead), monospaced: true)
+                    DetailRow("Disk written", byteString(sample.blockWrite), monospaced: true)
+                    DetailRow("Processes", "\(sample.processes)", monospaced: true)
                 }
             } else {
                 Section {

@@ -149,7 +149,7 @@ public final class DockerClient: Sendable {
         path.hasPrefix("/\(apiVersion)/") ? path : "/\(apiVersion)\(path)"
     }
 
-    /// A connect-time failure means the engine isn't listening — the one case the diagnostics
+    /// A connect-time failure means the engine isn't listening — the one case Engine health
     /// panel can actually fix, so it gets its own error rather than a raw POSIX code.
     ///
     /// On Apple platforms AsyncHTTPClient runs over Network.framework, so these arrive as

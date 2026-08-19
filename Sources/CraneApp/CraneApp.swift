@@ -2,6 +2,7 @@ import AppKit
 import CraneCore
 import CraneUI
 import SwiftUI
+import TipKit
 
 /// Promotes the process to a normal Dock app when it runs as a bare SwiftPM executable
 /// (`swift run`), where macOS would otherwise treat it as a background accessory.
@@ -9,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        try? Tips.configure()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

@@ -19,17 +19,15 @@ public struct ComponentStatus: Sendable, Equatable, Identifiable {
     }
 }
 
-/// A fix the diagnostics panel can perform with one button.
+/// A fix the Engine pane can perform with one button.
 public enum RepairAction: Sendable, Equatable {
     case install(EngineComponent)
     case startRuntime
     case startDaemon
     case installContext
-    case useContext
-    case provision
 }
 
-/// A single line in the diagnostics panel.
+/// A single line in the Engine health list.
 public struct Diagnostic: Sendable, Equatable, Identifiable {
     public enum Severity: Sendable, Equatable {
         /// Nothing to do.
@@ -68,43 +66,60 @@ public struct EngineStatus: Sendable, Equatable {
     /// The Docker context the user's shell would use, or a `DOCKER_HOST=…` marker when the
     /// environment overrides contexts entirely.
     public let contextCurrent: String?
+    /// A `docker` on PATH that is not Crane's, if any.
+    public let foreignDockerPath: String?
 
     public init(components: [ComponentStatus], runtimeRunning: Bool, daemonRunning: Bool,
-                socketPresent: Bool, contextInstalled: Bool, contextCurrent: String?) {
+                socketPresent: Bool, contextInstalled: Bool, contextCurrent: String?,
+                foreignDockerPath: String? = nil) {
         self.components = components
         self.runtimeRunning = runtimeRunning
         self.daemonRunning = daemonRunning
         self.socketPresent = socketPresent
         self.contextInstalled = contextInstalled
         self.contextCurrent = contextCurrent
+        self.foreignDockerPath = foreignDockerPath
     }
 
-    /// Nothing is installed yet — the app should onboard rather than show an empty dashboard.
-    public var isFresh: Bool { components.allSatisfy { !$0.isInstalled } }
+    /// Nothing *engine* is installed yet — the app should onboard rather than show an empty dashboard.
+    /// A leftover Docker CLI does not count; the GUI talks to the socket.
+    public var isFresh: Bool {
+        components.filter(\.component.isEngine).allSatisfy { !$0.isInstalled }
+    }
 
     /// The engine can serve containers right now.
     public var isReady: Bool { !diagnostics.contains { $0.severity == .blocking } }
 
     public var isContextCurrent: Bool { contextCurrent == DockerContext.name }
 
+    public var isDockerHostOverridden: Bool { contextCurrent?.hasPrefix("DOCKER_HOST=") == true }
+
+    public var cliPackBlocked: Bool { foreignDockerPath != nil }
+
+    /// Pinned Docker CLI and Compose both present under Crane's layout.
+    public var cliPackInstalled: Bool {
+        guard let docker = components.first(where: { $0.component == .docker }),
+              let compose = components.first(where: { $0.component == .compose }) else { return false }
+        return docker.matchesManifest && compose.matchesManifest
+    }
+
     public var diagnostics: [Diagnostic] {
-        var checks: [Diagnostic] = components.map(Self.diagnostic(for:))
+        var checks: [Diagnostic] = components.filter(\.component.isEngine).map(Self.diagnostic(for:))
         checks.append(runtimeCheck)
         checks.append(daemonCheck)
-        checks.append(contextCheck)
+        if !contextInstalled {
+            checks.append(contextMissingCheck)
+        }
         return checks
     }
 
     private static func diagnostic(for status: ComponentStatus) -> Diagnostic {
         let component = status.component
-        // The Docker CLI and the Compose plugin are for the user's terminal; the app itself
-        // talks to the socket, so their absence is a warning rather than a blocker.
-        let severity: Diagnostic.Severity = (component == .docker || component == .compose) ? .warning : .blocking
         switch status.installed {
         case .none:
             return Diagnostic(id: component.rawValue, title: component.displayName,
                               detail: "Not installed. \(component.purpose)",
-                              severity: severity, repair: .install(component))
+                              severity: .blocking, repair: .install(component))
         case let .some(version) where version != status.expected:
             return Diagnostic(id: component.rawValue, title: component.displayName,
                               detail: "Version \(version) is installed; this build of Crane is tested "
@@ -140,25 +155,9 @@ public struct EngineStatus: Sendable, Equatable {
                           severity: up ? .ok : .blocking, repair: up ? nil : .startDaemon)
     }
 
-    private var contextCheck: Diagnostic {
-        guard contextInstalled else {
-            return Diagnostic(id: "context", title: "Docker context",
-                              detail: "Not registered — `docker` in your shell won't find this engine.",
-                              severity: .warning, repair: .installContext)
-        }
-        if isContextCurrent {
-            return Diagnostic(id: "context", title: "Docker context",
-                              detail: "`\(DockerContext.name)` is selected.", severity: .ok, repair: nil)
-        }
-        let current = contextCurrent ?? "default"
-        // A DOCKER_HOST in the environment wins over any context; switching wouldn't help, so
-        // don't offer a button that quietly does nothing.
-        let overridden = current.hasPrefix("DOCKER_HOST=")
-        return Diagnostic(
-            id: "context", title: "Docker context",
-            detail: overridden
-                ? "Your shell sets \(current), which overrides Docker contexts. Unset it to use Crane."
-                : "Registered, but `\(current)` is selected.",
-            severity: .warning, repair: overridden ? nil : .useContext)
+    private var contextMissingCheck: Diagnostic {
+        Diagnostic(id: "context", title: "Docker context",
+                   detail: "Not registered — `docker` in your shell won't find this engine.",
+                   severity: .warning, repair: .installContext)
     }
 }

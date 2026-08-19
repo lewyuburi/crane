@@ -7,6 +7,12 @@ import Testing
 struct StackTests {
     let layout = StackLayout(root: URL(fileURLWithPath: "/tmp/crane-test"))
 
+    @Test("Engine artifacts are the required pair; CLI artifacts are the optional pack")
+    func artifactSets() {
+        #expect(StackManifest.current.engineArtifacts.map(\.component) == [.runtime, .socktainer])
+        #expect(StackManifest.current.cliArtifacts.map(\.component) == [.docker, .compose])
+    }
+
     @Test("Every pinned artifact carries a real SHA-256")
     func manifestIsPinned() {
         for artifact in StackManifest.current.artifacts {
@@ -80,14 +86,6 @@ struct TrustTests {
         #expect(VersionText.semver(in: "Docker version 29.7.2, build abc1234") == "29.7.2")
         #expect(VersionText.semver(in: "v5.4.0") == "5.4.0")
         #expect(VersionText.semver(in: "   ") == nil)
-    }
-
-    @Test("Versions compare numerically, not alphabetically")
-    func comparesVersions() {
-        #expect(VersionText.compare("1.10.0", "1.9.0") == .orderedDescending)
-        #expect(VersionText.compare("1.2.0", "1.2.0") == .orderedSame)
-        #expect(VersionText.compare("1.2", "1.2.0") == .orderedSame)
-        #expect(VersionText.compare("1.2.0", "1.2.1") == .orderedAscending)
     }
 }
 

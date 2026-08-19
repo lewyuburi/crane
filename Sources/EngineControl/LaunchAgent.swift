@@ -85,7 +85,7 @@ public enum LaunchControl {
         return JobState.hasPID(in: result.out)
     }
 
-    /// Restarts the job (`-k` kills it first), the repair action behind the diagnostics panel.
+    /// Restarts the job (`-k` kills it first), the repair behind a stopped Docker API.
     public static func restart(label: String) async throws {
         let result = try await ProcessRunner.run(launchctl, ["kickstart", "-k", "\(domain)/\(label)"])
         guard result.succeeded else {

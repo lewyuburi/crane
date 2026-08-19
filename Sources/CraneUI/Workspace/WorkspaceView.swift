@@ -1,5 +1,7 @@
 import CraneCore
+import DockerAPI
 import SwiftUI
+import TipKit
 
 /// The sections of the app.
 public enum WorkspaceSection: String, CaseIterable, Identifiable, Hashable {
@@ -30,15 +32,24 @@ public enum WorkspaceSection: String, CaseIterable, Identifiable, Hashable {
     var group: String { self == .engine ? "System" : "Workspace" }
 }
 
+/// What the container list and its detail pane are looking at.
+public enum WorkspaceItem: Hashable {
+    case project(String)
+    case container(Container.ID)
+}
+
 /// The main window once the engine is up: sidebar, list, detail.
 public struct WorkspaceView: View {
     @Environment(EngineModel.self) private var model
     @State private var section: WorkspaceSection
-    @State private var selection: Container.ID?
+    @State private var selection: WorkspaceItem?
+    @State private var imageSelection = Set<ImageSummary.ID>()
+    @State private var volumeSelection = Set<VolumeSummary.ID>()
+    @State private var networkSelection = Set<NetworkSummary.ID>()
 
-    /// `selection` is a parameter so a window can open on a specific container — restored state,
+    /// `selection` is a parameter so a window can open on a specific row — restored state,
     /// a notification, or a snapshot that needs the detail pane populated.
-    public init(section: WorkspaceSection = .containers, selection: Container.ID? = nil) {
+    public init(section: WorkspaceSection = .containers, selection: WorkspaceItem? = nil) {
         _section = State(initialValue: section)
         _selection = State(initialValue: selection)
     }
@@ -46,51 +57,87 @@ public struct WorkspaceView: View {
     private var store: WorkspaceStore { model.workspace }
 
     public var body: some View {
-        NavigationSplitView {
-            WorkspaceSidebar(section: $section)
-        } content: {
-            content
-                .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 520)
-        } detail: {
-            detail
-        }
-        .navigationSplitViewStyle(.balanced)
-        // Only the first appearance loads: after that the event feed keeps the store current,
-        // and reloading on every window would undo that.
-        .task { if !store.isLoaded { await store.reloadAll() } }
-        .overlay(alignment: .bottom) {
-            if let failure = store.failure ?? model.failure {
-                Banner(message: failure) {
-                    store.failure = nil
-                    model.failure = nil
+        split
+            .navigationSplitViewStyle(.balanced)
+            // Only the first appearance loads: after that the event feed keeps the store current,
+            // and reloading on every window would undo that.
+            .task { if !model.previewLocked, !store.isLoaded { await store.reloadAll() } }
+            .overlay(alignment: .bottom) {
+                if let failure = store.failure ?? model.failure {
+                    Banner(message: failure) {
+                        store.failure = nil
+                        model.failure = nil
+                    }
+                } else if model.shouldOfferCLITip {
+                    CLIOfferOverlay()
                 }
             }
-        }
     }
 
+    /// Containers, images, volumes and networks share the three-column split: a list, then a
+    /// detail Form. Engine is a Settings page and only needs the sidebar.
     @ViewBuilder
-    private var content: some View {
-        switch section {
-        case .containers: ContainerListView(selection: $selection)
-        case .images: ImagesView()
-        case .volumes: VolumesView()
-        case .networks: NetworksView()
-        case .engine: DiagnosticsView()
-        }
-    }
-
-    @ViewBuilder
-    private var detail: some View {
-        if section == .containers {
-            if let id = selection, let container = store.catalog[id] {
-                ContainerDetailView(container: container)
-                    .id(container.id)
-            } else {
-                ContentUnavailableView("No selection", systemImage: "shippingbox",
-                                       description: Text("Pick a container to see its logs, stats and shell."))
+    private var split: some View {
+        if section == .engine {
+            NavigationSplitView {
+                WorkspaceSidebar(section: $section)
+            } detail: {
+                EngineView()
             }
         } else {
-            ContentUnavailableView("Nothing selected", systemImage: section.symbol)
+            NavigationSplitView {
+                WorkspaceSidebar(section: $section)
+            } content: {
+                resourceList
+                    .navigationSplitViewColumnWidth(min: 300, ideal: 380, max: 560)
+            } detail: {
+                resourceDetail
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var resourceList: some View {
+        switch section {
+        case .containers: ContainerListView(selection: $selection)
+        case .images: ImagesView(selection: $imageSelection)
+        case .volumes: VolumesView(selection: $volumeSelection)
+        case .networks: NetworksView(selection: $networkSelection)
+        case .engine: EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var resourceDetail: some View {
+        switch section {
+        case .containers: containerDetail
+        case .images: ImageDetailView(selection: $imageSelection)
+        case .volumes: VolumeDetailView(selection: $volumeSelection)
+        case .networks: NetworkDetailView(selection: $networkSelection)
+        case .engine: EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var containerDetail: some View {
+        switch selection {
+        case let .container(id):
+            if let container = store.catalog[id] {
+                ContainerDetailView(container: container).id(container.id)
+            } else {
+                ContentUnavailableView("No selection", systemImage: "shippingbox",
+                                       description: Text("Pick a stack or a container."))
+            }
+        case let .project(name):
+            if let project = store.grouping.projects.first(where: { $0.name == name }) {
+                ProjectDetailView(project: project, selection: $selection).id(project.name)
+            } else {
+                ContentUnavailableView("No selection", systemImage: "square.stack.3d.up",
+                                       description: Text("Pick a stack or a container."))
+            }
+        case nil:
+            ContentUnavailableView("No selection", systemImage: "shippingbox",
+                                   description: Text("Pick a stack or a container."))
         }
     }
 }
@@ -107,9 +154,7 @@ struct WorkspaceSidebar: View {
             ForEach(["Workspace", "System"], id: \.self) { group in
                 Section(group) {
                     ForEach(WorkspaceSection.allCases.filter { $0.group == group }) { item in
-                        Label(item.title, systemImage: item.symbol)
-                            .badge(count(for: item) ?? 0)
-                            .tag(item)
+                        sidebarRow(item)
                     }
                 }
             }
@@ -118,6 +163,15 @@ struct WorkspaceSidebar: View {
         .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
         .navigationTitle("Crane")
         .safeAreaInset(edge: .bottom) { EngineBadge() }
+    }
+
+    @ViewBuilder
+    private func sidebarRow(_ item: WorkspaceSection) -> some View {
+        if let n = count(for: item) {
+            Label(item.title, systemImage: item.symbol).badge(n).tag(item)
+        } else {
+            Label(item.title, systemImage: item.symbol).tag(item)
+        }
     }
 
     private func count(for section: WorkspaceSection) -> Int? {
@@ -151,6 +205,23 @@ private struct EngineBadge: View {
     }
 }
 
+/// TipKit offer for the CLI pack — not the error banner.
+private struct CLIOfferOverlay: View {
+    @Environment(EngineModel.self) private var model
+    private let tip = DockerCLIPTip()
+
+    var body: some View {
+        TipView(tip) { action in
+            if action.id == "install" {
+                Task { await model.provisionCLI() }
+            }
+            tip.invalidate(reason: .actionPerformed)
+        }
+        .padding(Metric.regular)
+        .frame(maxWidth: 420)
+    }
+}
+
 /// Error surface that doesn't steal focus: it floats at the bottom until dismissed.
 struct Banner: View {
     let message: String
@@ -170,4 +241,44 @@ struct Banner: View {
         .glassEffect(.regular, in: .capsule)
         .padding(Metric.regular)
     }
+}
+
+#Preview("Workspace") {
+    CranePreview.window(
+        WorkspaceView().environment(CranePreview.model()))
+}
+
+#Preview("Workspace · container selected") {
+    CranePreview.window(
+        WorkspaceView(selection: .container("a1b2c3d4e5f6")).environment(CranePreview.model()))
+}
+
+#Preview("Workspace · empty") {
+    CranePreview.window(
+        WorkspaceView().environment(CranePreview.model(fillWorkspace: false)))
+}
+
+#Preview("Workspace · stack selected") {
+    CranePreview.window(
+        WorkspaceView(selection: .project("shop")).environment(CranePreview.model()))
+}
+
+#Preview("Workspace · images") {
+    CranePreview.window(
+        WorkspaceView(section: .images).environment(CranePreview.model()))
+}
+
+#Preview("Workspace · volumes") {
+    CranePreview.window(
+        WorkspaceView(section: .volumes).environment(CranePreview.model()))
+}
+
+#Preview("Workspace · networks") {
+    CranePreview.window(
+        WorkspaceView(section: .networks).environment(CranePreview.model()))
+}
+
+#Preview("Workspace · engine") {
+    CranePreview.window(
+        WorkspaceView(section: .engine).environment(CranePreview.model()))
 }

@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "DockerAPI", targets: ["DockerAPI"]),
         .library(name: "EngineControl", targets: ["EngineControl"]),
         .library(name: "CraneCore", targets: ["CraneCore"]),
+        .library(name: "CraneUI", targets: ["CraneUI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/swift-server/async-http-client", from: "1.36.0"),
@@ -26,11 +27,11 @@ let package = Package(
             name: "DockerAPI",
             dependencies: [.product(name: "AsyncHTTPClient", package: "async-http-client")]
         ),
-        // The parts only Apple's own runtime can do: machines, system/kernel, DNS domains,
-        // and the PTY behind `container exec`.
+        // The parts only Apple's own runtime can do: system/kernel, and the PTY behind
+        // `container exec`.
         .target(name: "AppleContainer"),
-        // Owns the stack Crane installs and supervises: runtime + socktainer + docker CLIs,
-        // their launch agents, the docker context, and the diagnostics that repair them.
+        // Owns the stack Crane installs and supervises: runtime + socktainer, optional Docker
+        // CLIs, launch agents, the docker context, and the repairs that keep them healthy.
         .target(name: "EngineControl", dependencies: ["AppleContainer"]),
         // Domain model and the observable store. The event reducer lives here and is pure.
         .target(name: "CraneCore", dependencies: ["DockerAPI", "AppleContainer", "EngineControl"]),

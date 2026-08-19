@@ -32,6 +32,17 @@ public struct ImageSummary: Sendable, Equatable, Decodable, Identifiable {
         containers = try c.decodeIfPresent(Int.self, forKey: .containers) ?? -1
         labels = try c.decodeIfPresent([String: String].self, forKey: .labels) ?? [:]
     }
+
+    public init(id: String, repoTags: [String], size: Int64, created: Date, containers: Int = -1,
+                repoDigests: [String] = [], labels: [String: String] = [:]) {
+        self.id = id
+        self.repoTags = repoTags
+        self.repoDigests = repoDigests
+        self.size = size
+        self.created = created
+        self.containers = containers
+        self.labels = labels
+    }
 }
 
 /// One entry from `GET /volumes`.
@@ -57,6 +68,15 @@ public struct VolumeSummary: Sendable, Equatable, Decodable, Identifiable {
         mountpoint = try c.decodeIfPresent(String.self, forKey: .mountpoint) ?? ""
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
         labels = try c.decodeIfPresent([String: String].self, forKey: .labels) ?? [:]
+    }
+
+    public init(name: String, driver: String, mountpoint: String, createdAt: String,
+                labels: [String: String] = [:]) {
+        self.name = name
+        self.driver = driver
+        self.mountpoint = mountpoint
+        self.createdAt = createdAt
+        self.labels = labels
     }
 }
 
@@ -109,6 +129,20 @@ public struct NetworkSummary: Sendable, Equatable, Decodable, Identifiable {
         labels = try c.decodeIfPresent([String: String].self, forKey: .labels) ?? [:]
         attached = (try c.decodeIfPresent([String: Attachment].self, forKey: .containers) ?? [:])
             .compactMapValues(\.address)
+    }
+
+    public init(id: String, name: String, driver: String, scope: String = "local",
+                subnet: String? = nil, gateway: String? = nil, internalOnly: Bool = false,
+                labels: [String: String] = [:], attached: [String: String] = [:]) {
+        self.id = id
+        self.name = name
+        self.driver = driver
+        self.scope = scope
+        self.subnet = subnet
+        self.gateway = gateway
+        self.internalOnly = internalOnly
+        self.labels = labels
+        self.attached = attached
     }
 }
 

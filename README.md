@@ -3,8 +3,7 @@
 A native macOS app that turns [Apple's `container`](https://github.com/apple/container) into a
 Docker replacement you can actually work on — the engine, the socket, and the UI, managed as one.
 
-> **Crane 2.0 is a rewrite in progress.** This branch is being built phase by phase; see
-> [Status](#status) for exactly what runs today. Crane 0.1.x is frozen at its tag.
+> **Crane 2.0** replaces the 0.1.x app. That line is frozen at its tag.
 
 ## Why a rewrite
 
@@ -17,23 +16,49 @@ API v1.51 on top of Apple's runtime.
 So Crane stops imitating Docker and starts running the real thing:
 
 ```
-Crane.app                  GUI, onboarding, diagnostics, projects
-docker CLI + compose       the official binaries, on Crane's context
+Crane.app                  GUI, onboarding, engine, projects
+docker CLI + compose       optional official binaries, or the CLI you already have
 socktainer                 Docker API, service DNS, restart policies, healthchecks
 apple/container            the runtime that boots the VMs
 ```
 
-Crane installs, pins, supervises and repairs all four, and drives them through the socket —
-no shim, no polling, no subprocess per click.
+Setup installs and supervises the **engine** (runtime + socktainer), registers a `crane` Docker
+context, and drives the GUI through the socket. The official `docker` / Compose binaries are an
+optional pack: one click in the app, or `crane setup --cli`, and only when no other `docker` is
+on `PATH`. If you already have Docker Desktop or Homebrew’s CLI, Crane will not replace it —
+turn on **Use Crane as the engine** to point that CLI at Crane’s socket.
 
 ## Status
 
 | Phase | What it delivers | State |
 |---|---|---|
-| 1 — Engine | Install/verify/supervise the stack, launch agents, Docker context, diagnostics, onboarding, event feed | **done** |
-| 2 — Core | Containers, images, volumes, networks, logs, stats, terminal, files — all over the API | **done** |
-| 3 — Projects | Real `docker compose`, app gallery, health and restart as first-class UI | planned |
-| 4 — Product | Menu bar, login start, search, Machines, new screenshots | planned |
+| 1 — Engine | Install/supervise runtime + socktainer, context, Engine pane, onboarding, CLI pack | **2.0** |
+| 2 — Workspace | Containers (Compose stacks in the list), images, volumes, networks, logs, stats, terminal, files | **2.0** |
+| Later | Compose-from-disk, app gallery, menu bar, Machines | not in 2.0 |
+
+## Install
+
+```sh
+brew install --cask lewyuburi/tap/crane
+```
+
+Open Crane and set up the engine. Leave **Install Docker CLI and Compose** on if you don’t
+already have `docker` on PATH — that’s the OrbStack-shaped loop: from a project folder,
+
+```sh
+docker compose up -d    # or `pnpm db:up`
+```
+
+The GUI groups those services as a Compose stack. A new terminal window is needed once after
+the CLI pack lands on PATH.
+
+Updates come from the tap, not from inside the app:
+
+```sh
+brew upgrade --cask crane
+```
+
+The current tap still serves 0.1.x until a `v2.0.0` GitHub release publishes the new DMG.
 
 ## Requirements
 
@@ -46,16 +71,18 @@ macOS 26 on Apple Silicon, and a Swift 6.2+ toolchain (Xcode 26) to build.
 swift test                  # unit suites (no runtime needed)
 ```
 
-The app onboards a clean machine: it downloads the pinned stack into
+The app onboards a clean machine: it downloads the pinned **engine** into
 `~/Library/Application Support/Crane`, loads two launch agents, and registers a `crane` Docker
-context. No admin password, nothing installed system-wide.
+context. No admin password, nothing installed system-wide. Docker CLI and Compose are on by
+default at first setup (uncheck if you already have `docker`), then live under Engine.
 
 Same thing from the terminal:
 
 ```sh
-crane status   # what's installed, what's running, what's wrong
-crane setup    # install or repair the stack, then start it
-docker ps      # the real Docker CLI, against Crane's context
+crane status        # what's installed, what's running, what's wrong
+crane setup         # install or repair the engine, then start it
+crane setup --cli   # also install official docker + compose (if PATH is free)
+docker context use crane   # if you already have a Docker CLI
 ```
 
 ## The pinned stack
@@ -76,8 +103,16 @@ which downloads the real artifacts and checks each one installs and reports the 
 
 ## Working on the UI
 
-The screens render to PNGs without launching the app, so a design change can be looked at (and
-looked at again afterwards):
+SwiftUI Previews live in the **CraneUI** library, not in `CraneApp`. Xcode 26 cannot set
+`ENABLE_DEBUG_DYLIB` on a SwiftPM executable, so the canvas fails if the scheme is `CraneApp`
+or `crane`.
+
+1. Scheme (toolbar): **CraneUI** → My Mac  
+   If it isn’t listed: Product → Scheme → Manage Schemes… → Autocreate / tick CraneUI.
+2. Open a file with `#Preview` (`OnboardingView.swift`, `EngineView.swift`, `ContainerAvatar.swift`).
+3. Editor → Canvas (⌥⌘↩), then Resume.
+
+Snapshots still work without Xcode:
 
 ```sh
 CRANE_SNAPSHOTS=/tmp/crane-ui swift test --filter SnapshotTests
@@ -99,6 +134,8 @@ Crane is honest about what this stack can't do rather than emulating it badly:
 - Restart policies are enforced by socktainer's process; Crane's launch agent restarts it, but a
   policy doesn't survive a host reboot the way dockerd's would.
 - `--privileged` doesn't exist on Apple's runtime; use `--cap-add`/`--cap-drop`.
+- Daily Compose is **image-based sidecars** (`docker compose up -d` of postgres, redis, mailpit,
+  minio). Services with `build:` need a working Docker build API; that is not a 2.0 promise.
 
 ## License
 

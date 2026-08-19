@@ -12,7 +12,11 @@ public struct StackManifest: Sendable, Equatable {
     public let docker: Artifact
     public let compose: Artifact
 
-    public var artifacts: [Artifact] { [runtime, socktainer, docker, compose] }
+    public var artifacts: [Artifact] { engineArtifacts + cliArtifacts }
+    /// Runtime + socktainer — what `crane setup` and onboarding install.
+    public var engineArtifacts: [Artifact] { [runtime, socktainer] }
+    /// Official Docker CLI + Compose — optional pack, never part of engine provision.
+    public var cliArtifacts: [Artifact] { [docker, compose] }
 
     public func artifact(for component: EngineComponent) -> Artifact {
         switch component {

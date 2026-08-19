@@ -5,8 +5,8 @@ import Foundation
 ///
 /// Deliberately narrower than the API's summary: this is what the list and detail views read,
 /// and keeping it a value type is what lets the reducer be pure.
-public struct Container: Identifiable, Sendable, Equatable {
-    public enum RunState: String, Sendable, Equatable {
+public struct Container: Identifiable, Sendable, Equatable, Hashable {
+    public enum RunState: String, Sendable, Equatable, Hashable {
         case created, running, paused, restarting, exited, dead, unknown
 
         public var isRunning: Bool { self == .running || self == .restarting }
@@ -17,7 +17,7 @@ public struct Container: Identifiable, Sendable, Equatable {
     }
 
     /// Only set when the image or Compose file defines a healthcheck.
-    public enum Health: String, Sendable, Equatable {
+    public enum Health: String, Sendable, Equatable, Hashable {
         case starting, healthy, unhealthy
 
         init?(_ raw: String?) {
@@ -82,13 +82,24 @@ public struct Container: Identifiable, Sendable, Equatable {
 }
 
 /// A Compose project: the containers that share a `com.docker.compose.project` label.
-public struct Project: Identifiable, Sendable, Equatable {
+public struct Project: Identifiable, Sendable, Equatable, Hashable {
     public let name: String
     public var containers: [Container]
 
     public var id: String { name }
     public var runningCount: Int { containers.filter(\.isRunning).count }
     public var isFullyUp: Bool { !containers.isEmpty && runningCount == containers.count }
+    public var isFullyStopped: Bool { runningCount == 0 }
+
+    public var statusLabel: String {
+        if isFullyUp { return "Running" }
+        if isFullyStopped { return "Stopped" }
+        return "Partial"
+    }
+
+    public var publishedPorts: [PortBinding] {
+        containers.flatMap(\.publishedPorts).sorted { ($0.hostPort ?? 0) < ($1.hostPort ?? 0) }
+    }
 
     public init(name: String, containers: [Container]) {
         self.name = name

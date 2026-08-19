@@ -171,10 +171,6 @@ public final class WorkspaceStore {
         await run { try await self.client.removeVolume(volume.name, force: true) }
     }
 
-    public func createNetwork(name: String, subnet: String?) async {
-        await run { try await self.client.createNetwork(name: name, subnet: subnet) }
-    }
-
     public func removeNetwork(_ network: NetworkSummary) async {
         await run { try await self.client.removeNetwork(network.id) }
     }

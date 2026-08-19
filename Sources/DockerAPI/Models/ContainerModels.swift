@@ -1,7 +1,7 @@
 import Foundation
 
 /// A published port, as `GET /containers/json` reports it.
-public struct PortBinding: Sendable, Equatable, Decodable {
+public struct PortBinding: Sendable, Equatable, Hashable, Decodable {
     public let ip: String?
     public let containerPort: Int
     public let hostPort: Int?

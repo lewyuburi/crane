@@ -1,6 +1,0 @@
-services:
-  it-tools:
-    image: corentinth/it-tools:latest
-    restart: unless-stopped
-    ports:
-      - "${PORT}:80"

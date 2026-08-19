@@ -22,7 +22,7 @@ struct TerminalTab: View {
             }
         }
         .task(id: container.id) {
-            let runtime = await model.engine.runtime
+            let runtime = model.engine.runtime
             guard runtime.isInstalled else {
                 failure = "The container runtime isn't installed."
                 return

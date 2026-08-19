@@ -18,14 +18,36 @@ public struct RootView: View {
             case .ready:
                 WorkspaceView()
             case .needsAttention:
-                NavigationStack { DiagnosticsView() }
+                NavigationStack { EngineView() }
             }
         }
-        .task { await model.refresh() }
+        .task { if !model.previewLocked { await model.refresh() } }
         .task {
             // The event feed lives as long as the window does: it's what keeps the container
             // list current without a single poll.
-            model.startWatching()
+            if !model.previewLocked { model.startWatching() }
         }
     }
+}
+
+#Preview("App · workspace") {
+    CranePreview.window(RootView().environment(CranePreview.model()))
+}
+
+#Preview("App · onboarding") {
+    CranePreview.window(
+        RootView().environment(
+            CranePreview.model(
+                phase: .needsSetup,
+                status: PreviewFixtures.engineStatus(runtime: false, running: false, contextCurrent: nil),
+                fillWorkspace: false)))
+}
+
+#Preview("App · needs attention") {
+    CranePreview.window(
+        RootView().environment(
+            CranePreview.model(
+                phase: .needsAttention,
+                status: PreviewFixtures.engineStatus(running: false),
+                fillWorkspace: false)))
 }

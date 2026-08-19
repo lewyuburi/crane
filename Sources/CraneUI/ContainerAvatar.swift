@@ -56,3 +56,13 @@ public struct ContainerAvatar: View {
         health.map(\.tint) ?? state.tint
     }
 }
+
+#Preview("Avatars") {
+    HStack(spacing: 16) {
+        ContainerAvatar(image: "nginx:alpine", state: .running, health: .healthy, size: 44)
+        ContainerAvatar(image: "postgres:17", state: .running, health: .starting, size: 44)
+        ContainerAvatar(image: "redis:7", state: .exited, size: 44)
+        ContainerAvatar(image: "scratch-app", state: .created, size: 44)
+    }
+    .padding(24)
+}

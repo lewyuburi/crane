@@ -1,4 +1,5 @@
 import DockerAPI
+import EngineControl
 import Foundation
 
 /// Sample state for previews, snapshots and tests.
@@ -55,14 +56,61 @@ public enum PreviewFixtures {
         """
         return try! JSONDecoder().decode(ContainerDetail.self, from: Data(json.utf8))
     }
-}
 
-public extension WorkspaceStore {
-    /// A store that starts populated, for previews and snapshot rendering. It still holds a real
-    /// client, so anything the view triggers behaves exactly as it would in the app.
-    static func preview(client: DockerClient = DockerClient()) -> WorkspaceStore {
-        let store = WorkspaceStore(client: client)
-        store.seed(containers: PreviewFixtures.containers)
-        return store
+    public static let images: [ImageSummary] = [
+        ImageSummary(id: "sha256:14cea493d9a3", repoTags: ["docker.io/library/nginx:alpine"],
+                     size: 57_547_856, created: .now.addingTimeInterval(-86_400), containers: 2),
+        ImageSummary(id: "sha256:postgres17aa", repoTags: ["docker.io/library/postgres:17-alpine"],
+                     size: 270_000_000, created: .now.addingTimeInterval(-200_000), containers: 1),
+        ImageSummary(id: "sha256:redis7bbbbbb", repoTags: ["redis:7-alpine"],
+                     size: 40_000_000, created: .now.addingTimeInterval(-50_000), containers: 0),
+        ImageSummary(id: "sha256:abcdef0123456789", repoTags: ["<none>:<none>"],
+                     size: 12_000_000, created: .now.addingTimeInterval(-10_000), containers: 0),
+    ]
+
+    public static let volumes: [VolumeSummary] = [
+        VolumeSummary(name: "shop_db", driver: "local",
+                      mountpoint: "/Users/dev/Library/Application Support/com.apple.container/volumes/shop_db",
+                      createdAt: "2026-08-07T04:06:42Z",
+                      labels: ["com.docker.compose.project": "shop"]),
+        VolumeSummary(name: "blog_data", driver: "local",
+                      mountpoint: "/Users/dev/Library/Application Support/com.apple.container/volumes/blog_data",
+                      createdAt: "2026-08-18T12:00:00Z",
+                      labels: ["com.docker.compose.project": "blog"]),
+    ]
+
+    public static let networks: [NetworkSummary] = [
+        NetworkSummary(id: "default", name: "default", driver: "nat",
+                       subnet: "192.168.64.0/24", gateway: "192.168.64.1",
+                       labels: ["com.apple.container.resource.role": "builtin"],
+                       attached: ["shop-web-1": "192.168.64.7/24"]),
+        NetworkSummary(id: "shop_default", name: "shop_default", driver: "nat",
+                       subnet: "192.168.65.0/24",
+                       attached: ["shop-web-1": "192.168.65.2/24", "shop-api-1": "192.168.65.3/24"]),
+    ]
+
+    public static func engineStatus(
+        runtime: Bool = true,
+        running: Bool = true,
+        foreignDockerPath: String? = nil,
+        cliPack: Bool = false,
+        contextCurrent: String? = "crane"
+    ) -> EngineStatus {
+        let manifest = StackManifest.current
+        return EngineStatus(
+            components: EngineComponent.allCases.map { component in
+                let installed: String?
+                if component.isEngine {
+                    installed = runtime ? manifest.artifact(for: component).version : nil
+                } else {
+                    installed = cliPack ? manifest.artifact(for: component).version : nil
+                }
+                return ComponentStatus(component: component, installed: installed,
+                                       expected: manifest.artifact(for: component).version)
+            },
+            runtimeRunning: running, daemonRunning: running, socketPresent: running,
+            contextInstalled: runtime,
+            contextCurrent: runtime ? contextCurrent : nil,
+            foreignDockerPath: foreignDockerPath)
     }
 }

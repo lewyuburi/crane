@@ -50,7 +50,7 @@ public struct DockerVersion: Sendable, Equatable, Decodable {
     }
 }
 
-/// `GET /info`, narrowed to what the diagnostics panel and the dashboard display.
+/// `GET /info`, narrowed to what Crane actually reads from the daemon.
 public struct DockerInfo: Sendable, Equatable, Decodable {
     public let containers: Int
     public let containersRunning: Int

@@ -35,53 +35,6 @@ public extension Container.Health {
         case .unhealthy: return .red
         }
     }
-
-    var symbol: String {
-        switch self {
-        case .healthy: return "heart.fill"
-        case .starting: return "heart"
-        case .unhealthy: return "heart.slash.fill"
-        }
-    }
-}
-
-/// The status dot used in every list. A ring around it keeps it visible against selection.
-public struct StatusDot: View {
-    let state: Container.RunState
-    let health: Container.Health?
-
-    public init(state: Container.RunState, health: Container.Health? = nil) {
-        self.state = state
-        self.health = health
-    }
-
-    public var body: some View {
-        Circle()
-            .fill(health?.tint ?? state.tint)
-            .frame(width: 8, height: 8)
-            .overlay(Circle().stroke((health?.tint ?? state.tint).opacity(0.25), lineWidth: 3))
-            .accessibilityLabel(health.map { "\(state.label), \($0.rawValue)" } ?? state.label)
-    }
-}
-
-/// A small capsule for ports, tags and counts.
-public struct Pill: View {
-    let text: String
-    var tint: Color = .secondary
-
-    public init(_ text: String, tint: Color = .secondary) {
-        self.text = text
-        self.tint = tint
-    }
-
-    public var body: some View {
-        Text(text)
-            .font(.caption2.monospacedDigit())
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(tint.opacity(0.12), in: Capsule())
-            .foregroundStyle(tint)
-    }
 }
 
 /// Bytes in the units people actually read.

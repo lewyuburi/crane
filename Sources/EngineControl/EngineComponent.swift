@@ -1,6 +1,7 @@
 import Foundation
 
-/// The four binaries Crane owns. Everything else on the machine is the user's business.
+    /// The four artifacts Crane can install: two for the engine, two for the optional CLI pack.
+    /// Everything else on the machine is the user's business.
 public enum EngineComponent: String, Sendable, CaseIterable, Identifiable, Codable {
     /// Apple's `container` — the runtime that actually boots the VMs.
     case runtime
@@ -12,6 +13,14 @@ public enum EngineComponent: String, Sendable, CaseIterable, Identifiable, Codab
     case compose
 
     public var id: String { rawValue }
+
+    /// True for the pieces the engine cannot run without. Docker CLI and Compose are optional.
+    public var isEngine: Bool {
+        switch self {
+        case .runtime, .socktainer: return true
+        case .docker, .compose: return false
+        }
+    }
 
     public var displayName: String {
         switch self {

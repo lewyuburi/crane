@@ -3,7 +3,7 @@ import Foundation
 /// The native `container` binary — used only for what the Docker API can't express.
 ///
 /// Crane reads state through the Docker socket, never through this. What lives here is the
-/// runtime's own surface: bringing the apiserver up, kernels, DNS domains and machines.
+/// runtime's own surface: bringing the apiserver up, kernels, and the PTY behind `container exec`.
 public struct ContainerRuntime: Sendable {
     public let executable: String
 
@@ -39,41 +39,5 @@ public struct ContainerRuntime: Sendable {
 
     public func stopSystem() async throws {
         try await ProcessRunner.check(executable, ["system", "stop"])
-    }
-
-    /// The DNS domain configured for container name resolution on the host, if any.
-    /// Read straight from the runtime's TOML config — the CLI has no getter for it.
-    public func configuredDNSDomain() -> String? {
-        let path = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: ".config/container/config.toml", directoryHint: .notDirectory)
-        guard let toml = try? String(contentsOf: path, encoding: .utf8) else { return nil }
-        return TOMLValue.string(section: "dns", key: "domain", in: toml)
-    }
-}
-
-/// A deliberately tiny TOML reader: Crane needs two scalars out of Apple's config file and
-/// nothing else, so this stays a pure function instead of a dependency.
-public enum TOMLValue {
-    public static func string(section: String, key: String, in toml: String) -> String? {
-        var inSection = false
-        for rawLine in toml.split(whereSeparator: \.isNewline) {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
-            if line.hasPrefix("[") {
-                inSection = line == "[\(section)]"
-                continue
-            }
-            guard inSection, line.hasPrefix(key) else { continue }
-            guard let equals = line.firstIndex(of: "=") else { continue }
-            var value = line[line.index(after: equals)...].trimmingCharacters(in: .whitespaces)
-            if let quote = value.first, quote == "\"" || quote == "'" {
-                let body = value.dropFirst()
-                guard let close = body.firstIndex(of: quote) else { return nil }
-                return String(body[body.startIndex..<close])
-            }
-            if let comment = value.firstIndex(of: "#") { value = String(value[..<comment]) }
-            let bare = value.trimmingCharacters(in: .whitespaces)
-            return bare.isEmpty ? nil : bare
-        }
-        return nil
     }
 }

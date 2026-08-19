@@ -127,6 +127,7 @@ struct GroupingTests {
         ])
         #expect(partial.runningCount == 1)
         #expect(!partial.isFullyUp)
+        #expect(partial.statusLabel == "Partial")
         #expect(Project(name: "empty", containers: []).isFullyUp == false)
     }
 

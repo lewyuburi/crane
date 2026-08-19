@@ -11,9 +11,9 @@ struct Crane: AsyncParsableCommand {
         commandName: "crane",
         abstract: "Manage the Crane container engine.",
         discussion: """
-        Crane runs Apple's `container` runtime behind a Docker-compatible socket, so the regular
-        `docker` and `docker compose` commands work against it. This tool sets that stack up and
-        tells you when something is wrong with it.
+        Crane runs Apple's `container` runtime behind a Docker-compatible socket. This tool
+        sets that engine up. `docker` and `docker compose` are optional — install them with
+        `crane setup --cli` when no other Docker CLI is on PATH.
         """,
         version: CraneVersion.stackSummary,
         subcommands: [Status.self, Setup.self, Restore.self]
@@ -52,10 +52,25 @@ struct Setup: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Install or repair the engine, then start it.")
 
+    @Flag(name: .customLong("cli"),
+          help: "Also install the official Docker CLI and Compose (refused if another docker is on PATH).")
+    var cli = false
+
     func run() async throws {
+        let engine = Engine()
         let console = ConsoleProgress()
-        try await Engine().provision { console.report($0) }
-        print("\u{1B}[2K\rEngine ready. `docker` now talks to Crane.")
+        try await engine.provision { console.report($0) }
+        if cli {
+            do {
+                try await engine.provisionCLI { console.report($0) }
+                print("\u{1B}[2K\rEngine ready. `docker` is on PATH via Crane — open a new terminal.")
+            } catch let error as EngineError {
+                print("\u{1B}[2K\rEngine ready, but the CLI pack was not installed: \(error.localizedDescription)")
+                throw ExitCode(1)
+            }
+        } else {
+            print("\u{1B}[2K\rEngine ready. Point `docker` at the `crane` context, or run `crane setup --cli`.")
+        }
     }
 }
 

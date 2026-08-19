@@ -9,11 +9,6 @@ public enum Metric {
     public static let snug: CGFloat = 10
     public static let regular: CGFloat = 16
     public static let loose: CGFloat = 24
-
-    /// Comfortable reading width for explanatory copy.
-    public static let proseWidth: CGFloat = 460
-    /// Detail panes stop growing here so text doesn't stretch across a wide window.
-    public static let detailWidth: CGFloat = 720
 }
 
 public extension Diagnostic.Severity {
@@ -45,27 +40,29 @@ public extension EngineComponent {
     }
 }
 
-/// A value shown next to a label, monospaced and selectable — the shape most of Crane's detail
-/// rows take. Wraps `LabeledContent` so every one of them aligns identically.
+/// One row in a grouped Form: label on the left, value on the right.
+///
+/// Every detail pane uses this so Status, Ports, Engine versions and Stats totals
+/// read as the same list — System Settings' `LabeledContent`, not a mix of tables and tints.
 public struct DetailRow: View {
     let label: String
     let value: String
-    var monospaced: Bool = true
-    var tint: Color?
+    var monospaced: Bool
 
-    public init(_ label: String, _ value: String, monospaced: Bool = true, tint: Color? = nil) {
+    public init(_ label: String, _ value: String, monospaced: Bool = false) {
         self.label = label
         self.value = value
         self.monospaced = monospaced
-        self.tint = tint
     }
 
     public var body: some View {
         LabeledContent(label) {
             Text(value)
-                .font(monospaced ? .system(.body, design: .monospaced) : .body)
-                .foregroundStyle(tint ?? .primary)
+                .font(monospaced ? .body.monospaced() : .body)
+                .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+                .lineLimit(1)
+                .truncationMode(.middle)
                 .multilineTextAlignment(.trailing)
         }
     }

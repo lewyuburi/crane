@@ -3,9 +3,10 @@ import Foundation
 
 /// Owns the container stack: what's installed, what's running, and how to fix either.
 ///
-/// This is the only place that knows the stack is made of four binaries and two launch agents.
+/// This is the only place that knows the stack is runtime + socktainer (engine) plus an
+/// optional Docker CLI pack, two launch agents, and a Docker context.
 /// Everything above it asks two questions — "is it ready?" and "make it ready" — which is what
-/// keeps onboarding, the diagnostics panel and the CLI from each growing their own version of
+/// keeps onboarding, the Engine pane and the CLI from each growing their own version of
 /// the truth.
 public actor Engine {
     public static let runtimeAgentLabel = "dev.crane.runtime"
@@ -56,25 +57,56 @@ public actor Engine {
             daemonRunning: await daemonUp,
             socketPresent: socketPresent,
             contextInstalled: context.isInstalled,
-            contextCurrent: context.currentContext
+            contextCurrent: context.currentContext,
+            foreignDockerPath: DockerLocator.foreignPath(craneBin: layout.binDirectory)
         )
     }
 
     // MARK: - Installation
 
-    /// Brings the whole stack to the blessed state: installs or upgrades what's missing, writes
-    /// the launch agents, registers the Docker context and selects it.
+    /// Brings the engine to the blessed state: runtime, socktainer, launch agents, and a
+    /// registered `crane` context. Does not install the Docker CLI pack.
     ///
-    /// Safe to re-run — that's the point. Onboarding and the "repair everything" button are the
-    /// same call.
+    /// Safe to re-run. Onboarding and "Repair everything" are the same call. If a foreign
+    /// `docker` is on PATH, the context is registered but not selected — stealing the user's
+    /// current engine is a setting, not a side effect of setup.
     public func provision(onProgress: @Sendable @escaping (StackInstaller.Progress) -> Void = { _ in }) async throws {
-        for artifact in manifest.artifacts {
+        for artifact in manifest.engineArtifacts {
             try await installer.install(artifact, onProgress: onProgress)
         }
         try await installAgents()
         try context.install()
+        if DockerLocator.foreignPath(craneBin: layout.binDirectory) == nil {
+            rememberPreviousContext()
+            try context.makeCurrent()
+        }
+    }
+
+    /// Downloads the pinned Docker CLI and Compose, puts Crane's `bin/` on PATH, and selects
+    /// the `crane` context. Refuses to run when a foreign `docker` is already on PATH.
+    public func provisionCLI(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        onProgress: @Sendable @escaping (StackInstaller.Progress) -> Void = { _ in }
+    ) async throws {
+        if let foreign = DockerLocator.foreignPath(craneBin: layout.binDirectory) {
+            throw EngineError.cliPackBlocked(foreign)
+        }
+        for artifact in manifest.cliArtifacts {
+            try await installer.install(artifact, onProgress: onProgress)
+        }
+        try CLIPathSnippet.install(home: home, binDirectory: layout.binDirectory)
         rememberPreviousContext()
         try context.makeCurrent()
+    }
+
+    /// Selects or restores the Docker context. The Engine pane's switch calls this.
+    public func setUseCraneAsEngine(_ enabled: Bool) throws {
+        if enabled {
+            rememberPreviousContext()
+            try context.makeCurrent()
+        } else {
+            try restorePreviousContext()
+        }
     }
 
     /// Puts the Docker CLI back on whatever context it used before Crane took over.
@@ -107,11 +139,6 @@ public actor Engine {
         try? Data((current ?? "default").utf8).write(to: previousContextFile, options: .atomic)
     }
 
-    public func install(_ component: EngineComponent,
-                        onProgress: @Sendable @escaping (StackInstaller.Progress) -> Void = { _ in }) async throws {
-        try await installer.install(manifest.artifact(for: component), onProgress: onProgress)
-    }
-
     /// Writes and loads both agents. The runtime one is a one-shot that starts the apiserver at
     /// login; socktainer's is supervised, so launchd brings it back if it exits.
     public func installAgents() async throws {
@@ -135,15 +162,10 @@ public actor Engine {
         ))
     }
 
-    public func removeAgents() async {
-        await LaunchControl.uninstall(label: Self.daemonAgentLabel)
-        await LaunchControl.uninstall(label: Self.runtimeAgentLabel)
-    }
-
     // MARK: - Repairs
 
-    /// Performs one diagnostic's fix. Each case is deliberately small and idempotent so the
-    /// panel can offer it as a single button without a confirmation dance.
+    /// Performs one health-row fix. Each case is small and idempotent so the Engine pane can
+    /// offer it as a single button without a confirmation dance.
     public func repair(_ action: RepairAction,
                        onProgress: @Sendable @escaping (StackInstaller.Progress) -> Void = { _ in }) async throws {
         switch action {
@@ -159,10 +181,6 @@ public actor Engine {
             }
         case .installContext:
             try context.install()
-        case .useContext:
-            try context.makeCurrent()
-        case .provision:
-            try await provision(onProgress: onProgress)
         }
     }
 

@@ -78,20 +78,62 @@ struct SnapshotTests {
 
     @Test("Onboarding")
     func onboarding() throws {
+        EngineModel.preview.seedPreview(
+            status: PreviewFixtures.engineStatus(runtime: false, running: false, contextCurrent: nil),
+            phase: .needsSetup)
         try snapshot("onboarding", size: CGSize(width: 900, height: 700)) { OnboardingView() }
+    }
+
+    @Test("Onboarding with a foreign Docker CLI")
+    func onboardingForeign() throws {
+        EngineModel.preview.seedPreview(
+            status: PreviewFixtures.engineStatus(runtime: false, running: false,
+                                                 foreignDockerPath: "/usr/local/bin/docker",
+                                                 contextCurrent: nil),
+            phase: .needsSetup)
+        try snapshot("onboarding-foreign", size: CGSize(width: 900, height: 700)) { OnboardingView() }
+    }
+
+    @Test("Engine with no CLI pack")
+    func engineNoCLI() throws {
+        EngineModel.preview.seedPreview(status: PreviewFixtures.engineStatus(), phase: .ready)
+        try snapshot("engine", size: CGSize(width: 720, height: 780)) {
+            NavigationStack { EngineView() }
+        }
+    }
+
+    @Test("Engine with a foreign Docker CLI")
+    func engineForeign() throws {
+        EngineModel.preview.seedPreview(
+            status: PreviewFixtures.engineStatus(foreignDockerPath: "/usr/local/bin/docker",
+                                                 contextCurrent: "desktop-linux"),
+            phase: .ready)
+        try snapshot("engine-foreign", size: CGSize(width: 720, height: 780)) {
+            NavigationStack { EngineView() }
+        }
+    }
+
+    @Test("Engine with the CLI pack installed")
+    func enginePack() throws {
+        EngineModel.preview.seedPreview(status: PreviewFixtures.engineStatus(cliPack: true), phase: .ready)
+        try snapshot("engine-cli", size: CGSize(width: 720, height: 780)) {
+            NavigationStack { EngineView() }
+        }
     }
 
     /// The list and the detail are captured through the real window: on their own, outside a
     /// split view, SwiftUI never gives them a layout pass and they come out blank.
     @Test("Window with a container selected")
     func windowWithSelection() throws {
+        EngineModel.preview.seedPreview(status: PreviewFixtures.engineStatus(), phase: .ready)
         try snapshot("detail", size: CGSize(width: 1280, height: 820)) {
-            WorkspaceView(selection: "a1b2c3d4e5f6")
+            WorkspaceView(selection: .container("a1b2c3d4e5f6"))
         }
     }
 
     @Test("Sidebar")
     func sidebar() throws {
+        EngineModel.preview.seedPreview(status: PreviewFixtures.engineStatus(), phase: .ready)
         try snapshot("sidebar", size: CGSize(width: 220, height: 620)) {
             NavigationStack { WorkspaceSidebar(section: .constant(.containers)) }
         }
@@ -99,6 +141,7 @@ struct SnapshotTests {
 
     @Test("Whole window")
     func window() throws {
+        EngineModel.preview.seedPreview(status: PreviewFixtures.engineStatus(), phase: .ready)
         try snapshot("window", size: CGSize(width: 1280, height: 820)) { WorkspaceView() }
     }
 }
@@ -113,7 +156,11 @@ private extension EngineModel {
     @MainActor
     static let preview: EngineModel = {
         let model = EngineModel()
-        model.workspace.seed(containers: PreviewFixtures.containers)
+        model.workspace.seed(
+            containers: PreviewFixtures.containers,
+            images: PreviewFixtures.images,
+            volumes: PreviewFixtures.volumes,
+            networks: PreviewFixtures.networks)
         return model
     }()
 }
