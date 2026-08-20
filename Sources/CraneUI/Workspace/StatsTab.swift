@@ -47,7 +47,7 @@ struct StatsTab: View {
         }
         .formStyle(.grouped)
         .task(id: container.id) {
-            let session = StatsSession(client: model.client, containerID: container.id)
+            let session = StatsSession(client: model.client, containerID: container.runtimeID)
             self.session = session
             session.start()
             defer { session.stop() }

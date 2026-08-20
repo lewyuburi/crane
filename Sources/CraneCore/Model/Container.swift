@@ -46,7 +46,9 @@ public struct Container: Identifiable, Sendable, Equatable, Hashable {
     public var service: String? { labels["com.docker.compose.service"] }
     public var isRunning: Bool { state.isRunning }
 
-    /// Apple's `container exec` looks up this name, not the Docker SHA in `id`.
+    /// Identifier Apple's runtime understands: the container name. Socktainer's list/inspect
+    /// SHA in `id` is not a valid Apple ID — `container exec` and `GET /containers/{id}/stats`
+    /// both look the name up with Apple's client and 404 on the SHA.
     public var runtimeID: String { name }
 
     /// Ports published to the host, lowest first — the ones worth offering as links.

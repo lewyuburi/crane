@@ -171,7 +171,7 @@ private struct ProjectStatsTab: View {
         .task(id: project.containers.map(\.id)) {
             let running = project.containers.filter(\.isRunning)
             let next = Dictionary(uniqueKeysWithValues: running.map {
-                ($0.id, StatsSession(client: model.client, containerID: $0.id))
+                ($0.id, StatsSession(client: model.client, containerID: $0.runtimeID))
             })
             next.values.forEach { $0.start() }
             sessions = next
