@@ -29,8 +29,10 @@ struct ImagesView: View {
             if store.images.isEmpty {
                 ContentUnavailableView("No images", systemImage: "square.stack.3d.up",
                                        description: Text("Pull one below, or run a container and let the daemon fetch it."))
+                    .paneEmptyState()
             } else if images.isEmpty {
                 ContentUnavailableView.search(text: query)
+                    .paneEmptyState()
             } else {
                 Table(images, selection: $selection, sortOrder: $sortOrder) {
                     TableColumn("Image", value: \.displayName) { image in
@@ -188,9 +190,11 @@ struct ImageDetailView: View {
             } else if selection.count > 1 {
                 ContentUnavailableView("\(selection.count) images selected", systemImage: "square.stack.3d.up",
                                        description: Text("Pick one to see tags and size, or remove them from the list."))
+                    .paneEmptyState()
             } else {
                 ContentUnavailableView("No selection", systemImage: "square.stack.3d.up",
                                        description: Text("Pick an image."))
+                    .paneEmptyState()
             }
         }
     }
@@ -239,8 +243,10 @@ struct VolumesView: View {
             if store.volumes.isEmpty {
                 ContentUnavailableView("No volumes", systemImage: "externaldrive",
                                        description: Text("Compose projects create theirs on first run."))
+                    .paneEmptyState()
             } else if volumes.isEmpty {
                 ContentUnavailableView.search(text: query)
+                    .paneEmptyState()
             } else {
                 Table(volumes, selection: $selection, sortOrder: $sortOrder) {
                     TableColumn("Name", value: \.name) { volume in
@@ -371,9 +377,11 @@ struct VolumeDetailView: View {
             } else if selection.count > 1 {
                 ContentUnavailableView("\(selection.count) volumes selected", systemImage: "externaldrive",
                                        description: Text("Pick one to see where it lives on disk."))
+                    .paneEmptyState()
             } else {
                 ContentUnavailableView("No selection", systemImage: "externaldrive",
                                        description: Text("Pick a volume."))
+                    .paneEmptyState()
             }
         }
     }
@@ -427,8 +435,10 @@ struct NetworksView: View {
             if store.networks.isEmpty {
                 ContentUnavailableView("No networks", systemImage: "network",
                                        description: Text("The runtime creates a default network when it starts."))
+                    .paneEmptyState()
             } else if networks.isEmpty {
                 ContentUnavailableView.search(text: query)
+                    .paneEmptyState()
             } else {
                 Table(networks, selection: $selection, sortOrder: $sortOrder) {
                     TableColumn("Name", value: \.name) { network in
@@ -544,9 +554,11 @@ struct NetworkDetailView: View {
             } else if selection.count > 1 {
                 ContentUnavailableView("\(selection.count) networks selected", systemImage: "network",
                                        description: Text("Pick one to see its subnet and attachments."))
+                    .paneEmptyState()
             } else {
                 ContentUnavailableView("No selection", systemImage: "network",
                                        description: Text("Pick a network."))
+                    .paneEmptyState()
             }
         }
     }

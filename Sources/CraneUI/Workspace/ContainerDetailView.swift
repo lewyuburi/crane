@@ -79,6 +79,7 @@ struct ContainerDetailView: View {
 
     private func notRunning(_ message: String) -> some View {
         ContentUnavailableView("Not running", systemImage: "pause.circle", description: Text(message))
+            .paneEmptyState()
     }
 }
 

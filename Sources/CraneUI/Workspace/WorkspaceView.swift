@@ -132,6 +132,7 @@ public struct WorkspaceView: View {
             } else {
                 ContentUnavailableView("No selection", systemImage: "shippingbox",
                                        description: Text("Pick a stack or a container."))
+                    .paneEmptyState()
             }
         case let .project(name):
             if let project = store.grouping.projects.first(where: { $0.name == name }) {
@@ -139,10 +140,12 @@ public struct WorkspaceView: View {
             } else {
                 ContentUnavailableView("No selection", systemImage: "square.stack.3d.up",
                                        description: Text("Pick a stack or a container."))
+                    .paneEmptyState()
             }
         case nil:
             ContentUnavailableView("No selection", systemImage: "shippingbox",
                                    description: Text("Pick a stack or a container."))
+                .paneEmptyState()
         }
     }
 }

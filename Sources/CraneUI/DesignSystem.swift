@@ -98,3 +98,15 @@ struct ColumnFilter: View {
         .padding(.vertical, 6)
     }
 }
+
+extension View {
+    /// Pins `ContentUnavailableView` under the title bar. Without this it floats mid-pane,
+    /// which looks broken next to a Filter field or a segmented toolbar.
+    func paneEmptyState() -> some View {
+        VStack(spacing: 0) {
+            self.padding(.top, Metric.loose)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}

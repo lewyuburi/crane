@@ -48,8 +48,10 @@ struct ContainerListView: View {
             } else if store.containers.isEmpty {
                 ContentUnavailableView("No containers", systemImage: "shippingbox",
                                        description: Text("From a project folder run `docker compose up -d`. Install the CLI pack under Engine if `docker` isn’t on PATH."))
+                    .paneEmptyState()
             } else if grouping.projects.isEmpty && grouping.standalone.isEmpty {
                 ContentUnavailableView.search(text: query)
+                    .paneEmptyState()
             } else {
                 List(outline, children: \.children, selection: $selection) { item in
                     if let project = item.project {

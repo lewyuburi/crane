@@ -84,9 +84,11 @@ struct FilesTab: View {
         if let failure {
             ContentUnavailableView("Can't read \(path)", systemImage: "folder.badge.questionmark",
                                    description: Text(failure))
+                .paneEmptyState()
         } else if entries.isEmpty && !isLoading {
             ContentUnavailableView("Empty directory", systemImage: "folder",
                                    description: Text("Drop files here to copy them into \(path)."))
+                .paneEmptyState()
         } else {
             Table(entries, selection: $selection) {
                 TableColumn("Name") { file in

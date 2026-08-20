@@ -17,6 +17,7 @@ struct TerminalTab: View {
                     .id(container.id)
             } else if let failure {
                 ContentUnavailableView("No shell", systemImage: "terminal", description: Text(failure))
+                    .paneEmptyState()
             } else {
                 ProgressView().controlSize(.small)
             }

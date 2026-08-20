@@ -120,6 +120,7 @@ struct LogsTab: View {
             if sources.isEmpty {
                 ContentUnavailableView("No services", systemImage: "text.alignleft",
                                        description: Text("This stack has no containers to tail."))
+                    .paneEmptyState()
             } else if let session {
                 LogConsole(session: session, fontSize: fontSize, follows: follows)
             } else {
