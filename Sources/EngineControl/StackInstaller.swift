@@ -118,7 +118,7 @@ public actor StackInstaller {
     public func installedVersion(of component: EngineComponent) async -> String? {
         let path = layout.link(for: component).path
         guard fm.isExecutableFile(atPath: path),
-              let result = try? await ProcessRunner.run(path, component.versionArguments),
+              let result = try? await ProcessRunner.run(path, component.versionArguments, timeout: .seconds(5)),
               result.succeeded else { return nil }
         return VersionText.semver(in: result.out)
     }

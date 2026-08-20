@@ -5,6 +5,10 @@ import Foundation
 /// Crane reads state through the Docker socket, never through this. What lives here is the
 /// runtime's own surface: bringing the apiserver up, kernels, and the PTY behind `container exec`.
 public struct ContainerRuntime: Sendable {
+    /// Apple's user-session job. `container system status` talks to this over XPC and can hang
+    /// forever if the Mach service is wedged, so Crane never waits on that CLI for a probe.
+    public static let apiserverJob = "com.apple.container.apiserver"
+
     public let executable: String
 
     public init(executable: String) {
@@ -16,16 +20,21 @@ public struct ContainerRuntime: Sendable {
     }
 
     public func version() async -> String? {
-        guard let result = try? await ProcessRunner.run(executable, ["--version"]), result.succeeded else {
+        guard let result = try? await ProcessRunner.run(executable, ["--version"], timeout: .seconds(5)),
+              result.succeeded else {
             return nil
         }
         return result.out
     }
 
-    /// Whether the apiserver is up. `container system status` exits non-zero when it isn't.
+    /// Whether launchd currently has a PID for the apiserver.
     public func isSystemRunning() async -> Bool {
-        guard let result = try? await ProcessRunner.run(executable, ["system", "status"]) else { return false }
-        return result.succeeded
+        let domain = "gui/\(getuid())"
+        guard let result = try? await ProcessRunner.run(
+            "/bin/launchctl", ["print", "\(domain)/\(Self.apiserverJob)"],
+            timeout: .seconds(3)
+        ), result.succeeded else { return false }
+        return result.out.range(of: #"(?m)^\s*pid\s*=\s*\d+"#, options: .regularExpression) != nil
     }
 
     /// Starts the apiserver, installing the default kernel on first run.
@@ -34,10 +43,11 @@ public struct ContainerRuntime: Sendable {
     /// it double as the login-time launch agent.
     public func startSystem() async throws {
         if await isSystemRunning() { return }
-        try await ProcessRunner.check(executable, ["system", "start", "--enable-kernel-install"])
+        try await ProcessRunner.check(executable, ["system", "start", "--enable-kernel-install"],
+                                     timeout: .seconds(60))
     }
 
     public func stopSystem() async throws {
-        try await ProcessRunner.check(executable, ["system", "stop"])
+        try await ProcessRunner.check(executable, ["system", "stop"], timeout: .seconds(30))
     }
 }

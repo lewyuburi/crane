@@ -11,6 +11,11 @@ import Foundation
 public actor Engine {
     public static let runtimeAgentLabel = "dev.crane.runtime"
     public static let daemonAgentLabel = "dev.crane.socktainer"
+    /// Kickstart Apple's job; do not call `container system start` from login (that rewrites
+    /// the apiserver plist onto Crane's install root and can mix versions).
+    public nonisolated static var runtimeAgentProgram: [String] {
+        ["/bin/launchctl", "kickstart", "\(LaunchControl.domain)/\(ContainerRuntime.apiserverJob)"]
+    }
 
     public let manifest: StackManifest
     public let layout: StackLayout
@@ -74,6 +79,10 @@ public actor Engine {
         for artifact in manifest.engineArtifacts {
             try await installer.install(artifact, onProgress: onProgress)
         }
+        // Start (or no-op) before loading agents. The login agent only kickstarts Apple's
+        // existing job — `container system start` rewrites the apiserver plist to Crane's
+        // install root and wedges XPC when /usr/local already owns the live plugins.
+        try await runtime.startSystem()
         try await installAgents()
         try context.install()
         if DockerLocator.foreignPath(craneBin: layout.binDirectory) == nil {
@@ -139,13 +148,13 @@ public actor Engine {
         try? Data((current ?? "default").utf8).write(to: previousContextFile, options: .atomic)
     }
 
-    /// Writes and loads both agents. The runtime one is a one-shot that starts the apiserver at
-    /// login; socktainer's is supervised, so launchd brings it back if it exits.
+    /// Writes and loads both agents. The runtime one kickstarts Apple's apiserver job at login
+    /// without rewriting its plist; socktainer's is supervised, so launchd brings it back if it exits.
     public func installAgents() async throws {
         try FileManager.default.createDirectory(at: layout.logsDirectory, withIntermediateDirectories: true)
         try await LaunchControl.install(LaunchAgent(
             label: Self.runtimeAgentLabel,
-            program: [layout.link(for: .runtime).path, "system", "start", "--enable-kernel-install"],
+            program: Self.runtimeAgentProgram,
             runAtLoad: true,
             keepAlive: false,
             standardOutPath: logPath("runtime.log"),
@@ -176,7 +185,11 @@ public actor Engine {
         case let .install(component):
             try await installer.install(manifest.artifact(for: component), onProgress: onProgress)
         case .startRuntime:
-            try await runtime.startSystem()
+            if await LaunchControl.isRunning(label: ContainerRuntime.apiserverJob) {
+                try await LaunchControl.restart(label: ContainerRuntime.apiserverJob)
+            } else {
+                try await runtime.startSystem()
+            }
         case .startDaemon:
             if await LaunchControl.isRunning(label: Self.daemonAgentLabel) {
                 try await LaunchControl.restart(label: Self.daemonAgentLabel)

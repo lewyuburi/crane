@@ -110,6 +110,14 @@ struct LaunchAgentTests {
         #expect(agent.plistURL.path.hasSuffix("Library/LaunchAgents/dev.crane.socktainer.plist"))
     }
 
+    @Test("The runtime agent kickstarts Apple's job instead of rewriting its plist")
+    func runtimeAgentKickstartsAPIServer() {
+        #expect(Engine.runtimeAgentProgram == [
+            "/bin/launchctl", "kickstart",
+            "\(LaunchControl.domain)/com.apple.container.apiserver",
+        ])
+    }
+
     @Test("A job is only running when launchctl prints a pid")
     func readsJobState() {
         #expect(JobState.hasPID(in: "state = running\n\tpid = 4211\n\truntime = 1m"))

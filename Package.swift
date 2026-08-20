@@ -59,7 +59,7 @@ let package = Package(
                 .product(name: "NIOPosix", package: "swift-nio"),
             ]
         ),
-        .testTarget(name: "EngineControlTests", dependencies: ["EngineControl"]),
+        .testTarget(name: "EngineControlTests", dependencies: ["EngineControl", "AppleContainer"]),
         .testTarget(name: "CraneCoreTests", dependencies: ["CraneCore"]),
         .testTarget(name: "CraneUITests", dependencies: ["CraneUI"]),
     ]

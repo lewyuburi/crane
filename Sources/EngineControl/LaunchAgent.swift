@@ -64,15 +64,18 @@ public enum LaunchControl {
                                                 withIntermediateDirectories: true)
         try agent.plistData().write(to: url, options: .atomic)
         // Bootout first so a changed definition actually takes effect; ignore "not loaded".
-        _ = try? await ProcessRunner.run(launchctl, ["bootout", "\(domain)/\(agent.label)"])
-        let result = try await ProcessRunner.run(launchctl, ["bootstrap", domain, url.path])
+        _ = try? await ProcessRunner.run(launchctl, ["bootout", "\(domain)/\(agent.label)"],
+                                         timeout: .seconds(8))
+        let result = try await ProcessRunner.run(launchctl, ["bootstrap", domain, url.path],
+                                                 timeout: .seconds(8))
         guard result.succeeded else {
             throw EngineError.launchd("Couldn't load \(agent.label): \(result.err.isEmpty ? result.out : result.err)")
         }
     }
 
     public static func uninstall(label: String) async {
-        _ = try? await ProcessRunner.run(launchctl, ["bootout", "\(domain)/\(label)"])
+        _ = try? await ProcessRunner.run(launchctl, ["bootout", "\(domain)/\(label)"],
+                                         timeout: .seconds(8))
         try? FileManager.default.removeItem(
             at: FileManager.default.homeDirectoryForCurrentUser
                 .appending(path: "Library/LaunchAgents/\(label).plist", directoryHint: .notDirectory))
@@ -80,14 +83,16 @@ public enum LaunchControl {
 
     /// Whether launchd knows the job and it currently has a PID.
     public static func isRunning(label: String) async -> Bool {
-        guard let result = try? await ProcessRunner.run(launchctl, ["print", "\(domain)/\(label)"]),
+        guard let result = try? await ProcessRunner.run(launchctl, ["print", "\(domain)/\(label)"],
+                                                        timeout: .seconds(3)),
               result.succeeded else { return false }
         return JobState.hasPID(in: result.out)
     }
 
     /// Restarts the job (`-k` kills it first), the repair behind a stopped Docker API.
     public static func restart(label: String) async throws {
-        let result = try await ProcessRunner.run(launchctl, ["kickstart", "-k", "\(domain)/\(label)"])
+        let result = try await ProcessRunner.run(launchctl, ["kickstart", "-k", "\(domain)/\(label)"],
+                                                 timeout: .seconds(8))
         guard result.succeeded else {
             throw EngineError.launchd("Couldn't restart \(label): \(result.err.isEmpty ? result.out : result.err)")
         }
