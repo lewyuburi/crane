@@ -27,7 +27,7 @@ struct TerminalTab: View {
                 failure = "The container runtime isn't installed."
                 return
             }
-            invocation = runtime.shellInvocation(containerID: container.id)
+            invocation = runtime.shellInvocation(containerID: container.runtimeID)
         }
     }
 }

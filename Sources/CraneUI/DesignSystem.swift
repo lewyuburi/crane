@@ -91,8 +91,10 @@ struct ColumnFilter: View {
                 .buttonStyle(.plain)
             }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         .padding(.horizontal, Metric.snug)
-        .padding(.vertical, 7)
-        .background(.bar)
+        .padding(.vertical, 6)
     }
 }

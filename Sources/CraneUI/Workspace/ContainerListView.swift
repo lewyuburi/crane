@@ -59,12 +59,14 @@ struct ContainerListView: View {
                     }
                 }
                 .listStyle(.sidebar)
-                .environment(\.defaultMinListRowHeight, 34)
+                // Two-line rows (name + subtitle). The outline uses this as the collapsed
+                // group height, and 34pt clips the second line.
+                .environment(\.defaultMinListRowHeight, 48)
             }
         }
         .navigationTitle("Containers")
         .navigationSubtitle(subtitle)
-        .safeAreaInset(edge: .top, spacing: 0) { ColumnFilter(text: $query) }
+        .safeAreaBar(edge: .top, spacing: 0) { ColumnFilter(text: $query) }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Picker("Show", selection: $filter) {
@@ -119,6 +121,7 @@ private struct ProjectRow: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: Metric.tight)
             if hovering {
@@ -137,7 +140,8 @@ private struct ProjectRow: View {
                 }
             }
         }
-        .padding(.vertical, 1)
+        .padding(.vertical, 4)
+        .frame(minHeight: 40, alignment: .center)
         .onHover { hovering = $0 }
     }
 }
@@ -167,7 +171,8 @@ private struct ContainerRow: View {
             Spacer(minLength: Metric.tight)
             trailing
         }
-        .padding(.vertical, 1)
+        .padding(.vertical, 4)
+        .frame(minHeight: 40, alignment: .center)
         .contentShape(.rect)
         .onHover { hovering = $0 }
         .contextMenu { menu }

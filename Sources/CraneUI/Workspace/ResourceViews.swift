@@ -61,7 +61,7 @@ struct ImagesView: View {
         }
         .navigationTitle("Images")
         .navigationSubtitle(store.images.isEmpty ? "" : "\(store.images.count) · \(byteString(totalSize))")
-        .safeAreaInset(edge: .top, spacing: 0) { ColumnFilter(text: $query) }
+        .safeAreaBar(edge: .top, spacing: 0) { ColumnFilter(text: $query) }
         .safeAreaInset(edge: .bottom) { pullBar }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -268,7 +268,7 @@ struct VolumesView: View {
         }
         .navigationTitle("Volumes")
         .navigationSubtitle(store.volumes.isEmpty ? "" : "\(store.volumes.count) volumes")
-        .safeAreaInset(edge: .top, spacing: 0) { ColumnFilter(text: $query) }
+        .safeAreaBar(edge: .top, spacing: 0) { ColumnFilter(text: $query) }
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: Metric.snug) {
                 TextField("New volume name", text: $newName)
@@ -468,7 +468,7 @@ struct NetworksView: View {
         }
         .navigationTitle("Networks")
         .navigationSubtitle(store.networks.isEmpty ? "" : "\(store.networks.count) networks")
-        .safeAreaInset(edge: .top, spacing: 0) { ColumnFilter(text: $query) }
+        .safeAreaBar(edge: .top, spacing: 0) { ColumnFilter(text: $query) }
         .toolbar {
             if !removableSelection.isEmpty {
                 ToolbarItem(placement: .primaryAction) {

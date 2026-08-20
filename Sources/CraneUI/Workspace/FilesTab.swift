@@ -26,6 +26,7 @@ struct FilesTab: View {
             Divider()
             content
         }
+        .background(.clear)
         .dropDestination(for: URL.self) { urls, _ in
             upload(urls)
             return true
@@ -47,7 +48,8 @@ struct FilesTab: View {
         .task(id: container.id) {
             browser = FileBrowser(client: model.client,
                                   runtime: model.engine.runtime,
-                                  containerID: container.id)
+                                  execID: container.runtimeID,
+                                  archiveID: container.id)
             await load("/")
         }
     }
@@ -112,7 +114,8 @@ struct FilesTab: View {
                 }
                 .width(100)
             }
-            .tableStyle(.inset(alternatesRowBackgrounds: true))
+            .tableStyle(.inset(alternatesRowBackgrounds: false))
+            .scrollContentBackground(.hidden)
             .contextMenu(forSelectionType: RemoteFile.ID.self) { ids in
                 if let file = entries.first(where: { ids.contains($0.id) }) {
                     if file.isDirectory {

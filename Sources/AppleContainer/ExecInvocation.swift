@@ -15,7 +15,8 @@ public struct ExecInvocation: Sendable, Equatable {
 }
 
 public extension ContainerRuntime {
-    /// Builds a `container exec -it` invocation.
+    /// Builds a `container exec -it` invocation. `containerID` is Apple's ID (the container
+    /// name under socktainer), not the Docker API SHA.
     ///
     /// The shell goes through the native CLI rather than the Docker API on purpose: it gives a
     /// real PTY, so job control, resizing and full-screen programs behave as they would in
@@ -28,10 +29,12 @@ public extension ContainerRuntime {
         )
     }
 
-    /// Runs a command in a container and returns its combined output. Used for the small
-    /// questions a terminal shouldn't have to answer, like listing a directory.
+    /// Runs a command in a container and returns stdout. Used for the small questions a
+    /// terminal shouldn't have to answer, like listing a directory. Throws if the exec fails,
+    /// so callers don't mistake an error message for a successful empty result.
     func output(containerID: String, command: [String]) async throws -> String {
-        let result = try await ProcessRunner.run(executable, ["exec", containerID] + command)
-        return result.succeeded ? result.out : result.err
+        let result = try await ProcessRunner.check(
+            executable, ["exec", containerID] + command, timeout: .seconds(15))
+        return result.out
     }
 }

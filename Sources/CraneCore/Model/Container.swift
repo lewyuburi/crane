@@ -46,6 +46,9 @@ public struct Container: Identifiable, Sendable, Equatable, Hashable {
     public var service: String? { labels["com.docker.compose.service"] }
     public var isRunning: Bool { state.isRunning }
 
+    /// Apple's `container exec` looks up this name, not the Docker SHA in `id`.
+    public var runtimeID: String { name }
+
     /// Ports published to the host, lowest first — the ones worth offering as links.
     public var publishedPorts: [PortBinding] {
         ports.filter { $0.hostPort != nil }.sorted { ($0.hostPort ?? 0) < ($1.hostPort ?? 0) }

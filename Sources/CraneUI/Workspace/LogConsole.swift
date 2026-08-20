@@ -24,8 +24,9 @@ struct LogConsole: NSViewRepresentable {
         let textView = NSTextView()
         textView.isEditable = false
         textView.isSelectable = true
-        textView.drawsBackground = true
-        textView.backgroundColor = .textBackgroundColor
+        // Let the window material show through, matching Info's grouped Form and Finder.
+        textView.drawsBackground = false
+        textView.backgroundColor = .clear
         textView.textContainerInset = NSSize(width: 10, height: 10)
         textView.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
         textView.textColor = .labelColor
@@ -37,6 +38,7 @@ struct LogConsole: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.documentView = textView
         scrollView.drawsBackground = false
+        scrollView.contentView.drawsBackground = false
 
         context.coordinator.textView = textView
         context.coordinator.scrollView = scrollView

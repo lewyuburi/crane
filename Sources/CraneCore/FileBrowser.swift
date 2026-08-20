@@ -32,16 +32,27 @@ public struct RemoteFile: Identifiable, Sendable, Equatable {
 public struct FileBrowser: Sendable {
     private let client: DockerClient
     private let runtime: ContainerRuntime
-    private let containerID: String
+    /// Apple's `container exec` name. The Docker SHA is not a valid runtime ID.
+    private let execID: String
+    /// Docker API ID (SHA or name) for the tar copy endpoints.
+    private let archiveID: String
 
-    public init(client: DockerClient, runtime: ContainerRuntime, containerID: String) {
+    public init(client: DockerClient, runtime: ContainerRuntime,
+                execID: String, archiveID: String) {
         self.client = client
         self.runtime = runtime
-        self.containerID = containerID
+        self.execID = execID
+        self.archiveID = archiveID
+    }
+
+    /// When one identifier works for both exec and the Docker archive endpoints (the container
+    /// name, in live tests against socktainer).
+    public init(client: DockerClient, runtime: ContainerRuntime, containerID: String) {
+        self.init(client: client, runtime: runtime, execID: containerID, archiveID: containerID)
     }
 
     public func list(_ path: String) async throws -> [RemoteFile] {
-        let output = try await runtime.output(containerID: containerID, command: ["ls", "-la", path])
+        let output = try await runtime.output(containerID: execID, command: ["/bin/ls", "-la", path])
         return ListingParser.parse(output)
     }
 
@@ -49,7 +60,7 @@ public struct FileBrowser: Sendable {
     ///
     /// The endpoint always hands back a tar, even for one file, so it's unpacked into place.
     public func download(_ path: String, to destination: URL) async throws {
-        let tar = try await client.archive(containerID, path: path)
+        let tar = try await client.archive(archiveID, path: path)
         let staging = FileManager.default.temporaryDirectory
             .appending(path: "crane-download-\(UUID().uuidString.prefix(8))", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
@@ -83,7 +94,7 @@ public struct FileBrowser: Sendable {
             arguments += ["-C", source.deletingLastPathComponent().path, source.lastPathComponent]
         }
         try await ProcessRunner.check("/usr/bin/tar", arguments)
-        try await client.extractArchive(containerID, to: directory, tar: try Data(contentsOf: archive))
+        try await client.extractArchive(archiveID, to: directory, tar: try Data(contentsOf: archive))
     }
 }
 
