@@ -154,7 +154,11 @@ public actor Engine {
         try await LaunchControl.install(LaunchAgent(
             label: Self.daemonAgentLabel,
             // Crane owns the Docker context, so socktainer must not write its own.
-            program: [layout.link(for: .socktainer).path, "--no-docker-context"],
+            // Skip socktainer's exact-version gate: Apple's `container` at /usr/local
+            // (or a newer patch) is often already the live XPC apiserver, and
+            // `container system start` is a no-op when that service is up. socktainer
+            // 1.2.1 then refuses to start against 1.2.2 even though the API works.
+            program: [layout.link(for: .socktainer).path, "--no-docker-context", "--no-check-compatibility"],
             runAtLoad: true,
             keepAlive: true,
             standardOutPath: logPath("socktainer.log"),

@@ -59,6 +59,7 @@ struct ProjectDetailView: View {
 }
 
 private struct ProjectInfoTab: View {
+    @Environment(EngineModel.self) private var model
     let project: Project
     @Binding var selection: WorkspaceItem?
 
@@ -108,8 +109,37 @@ private struct ProjectInfoTab: View {
                     }
                 }
             }
+
+            if !collisionWarnings.isEmpty {
+                Section("Short names") {
+                    ForEach(Array(collisionWarnings.enumerated()), id: \.offset) { _, warning in
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            ForEach(services) { container in
+                Section(container.service ?? container.name) {
+                    ReachableAsRows(
+                        names: ReachableNames(of: container, among: among),
+                        showCollision: false)
+                }
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private var among: [Container] { model.workspace.containers }
+
+    private var collisionWarnings: [String] {
+        ReachableNames.stackWarnings(in: project, among: among)
+    }
+
+    private var services: [Container] {
+        project.containers.sorted {
+            ($0.service ?? $0.name, $0.name) < ($1.service ?? $1.name, $1.name)
+        }
     }
 }
 

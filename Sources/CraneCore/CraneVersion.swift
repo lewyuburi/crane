@@ -6,7 +6,7 @@ import Foundation
 /// `release.yml` stamps `current` from the pushed tag, so `crane --version`, the app's
 /// `CFBundleShortVersionString` and the About panel can't drift apart.
 public enum CraneVersion {
-    public static let current = "2.0.0"
+    public static let current = "2.0.1"
 
     /// What the UI shows as one unit — Crane and its engine are versioned together.
     public static var stackSummary: String {

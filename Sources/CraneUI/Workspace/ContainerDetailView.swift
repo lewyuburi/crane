@@ -143,6 +143,10 @@ private struct InfoTab: View {
                 }
             }
 
+            Section("Reachable as") {
+                ReachableAsRows(names: ReachableNames(of: container, among: model.workspace.containers))
+            }
+
             if let detail, !detail.mounts.isEmpty {
                 Section("Mounts") {
                     ForEach(Array(detail.mounts.enumerated()), id: \.offset) { _, mount in

@@ -58,7 +58,7 @@ Updates come from the tap, not from inside the app:
 brew upgrade --cask crane
 ```
 
-The current tap still serves 0.1.x until a `v2.0.0` GitHub release publishes the new DMG.
+The tap tracks GitHub releases. After a new tag, `brew upgrade --cask crane` pulls the DMG.
 
 ## Requirements
 
@@ -136,6 +136,10 @@ Crane is honest about what this stack can't do rather than emulating it badly:
 - `--privileged` doesn't exist on Apple's runtime; use `--cap-add`/`--cap-drop`.
 - Daily Compose is **image-based sidecars** (`docker compose up -d` of postgres, redis, mailpit,
   minio). Services with `build:` need a working Docker build API; that is not a 2.0 promise.
+- Short Compose names (`redis`) are **global** on this engine, not scoped to a project network.
+  If two stacks share a service name, use `redis.yubarta` (or the name on **Reachable as** in
+  Info). From the Mac, published ports are still `localhost:<port>` — Crane does not install
+  a host resolver.
 
 ## License
 

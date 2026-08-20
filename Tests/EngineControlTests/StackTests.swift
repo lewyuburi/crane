@@ -94,13 +94,14 @@ struct LaunchAgentTests {
     @Test("The plist says exactly what launchd needs")
     func plistShape() throws {
         let agent = LaunchAgent(label: "dev.crane.socktainer",
-                                program: ["/tmp/bin/socktainer", "--no-docker-context"],
+                                program: ["/tmp/bin/socktainer", "--no-docker-context", "--no-check-compatibility"],
                                 runAtLoad: true, keepAlive: true,
                                 standardOutPath: "/tmp/logs/socktainer.log")
         let plist = try PropertyListSerialization.propertyList(
             from: agent.plistData(), format: nil) as! [String: Any]
         #expect(plist["Label"] as? String == "dev.crane.socktainer")
-        #expect(plist["ProgramArguments"] as? [String] == ["/tmp/bin/socktainer", "--no-docker-context"])
+        #expect(plist["ProgramArguments"] as? [String]
+            == ["/tmp/bin/socktainer", "--no-docker-context", "--no-check-compatibility"])
         #expect(plist["RunAtLoad"] as? Bool == true)
         #expect(plist["KeepAlive"] as? Bool == true)
         #expect(plist["ThrottleInterval"] as? Int == 10)
