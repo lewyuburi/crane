@@ -4,16 +4,41 @@ import CraneUI
 import SwiftUI
 import TipKit
 
-/// Promotes the process to a normal Dock app when it runs as a bare SwiftPM executable
-/// (`swift run`), where macOS would otherwise treat it as a background accessory.
+/// Owns Dock visibility and “last window closed” behavior for the menu bar lifestyle.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         try? Tips.configure()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: nil
+        )
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            NotificationCenter.default.post(name: AppPresence.openMainWindow, object: nil)
+        }
+        return true
+    }
+
+    @objc private func windowWillClose(_ note: Notification) {
+        DispatchQueue.main.async {
+            let remaining = NSApp.windows.filter { window in
+                window.isVisible
+                    && window.canBecomeMain
+                    && !(window is NSPanel)
+            }
+            if remaining.isEmpty {
+                AppPresence.hideFromDock()
+            }
+        }
+    }
 }
 
 @main
@@ -22,7 +47,7 @@ struct CraneApp: App {
     @State private var model = EngineModel()
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: AppPresence.mainWindowID) {
             RootView()
                 .environment(model)
                 .frame(minWidth: 720, minHeight: 520)
@@ -33,6 +58,12 @@ struct CraneApp: App {
                 Button("About Crane") { showAbout() }
             }
         }
+
+        MenuBarExtra("Crane", systemImage: "shippingbox.fill") {
+            MenuBarStatusView()
+                .environment(model)
+        }
+        .menuBarExtraStyle(.menu)
     }
 
     private func showAbout() {

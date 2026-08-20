@@ -201,6 +201,13 @@ public actor Engine {
         }
     }
 
+    /// Unloads socktainer (plist stays) and stops the apiserver. Containers stop; install remains.
+    public func stop() async throws {
+        await LaunchControl.unload(label: Self.daemonAgentLabel)
+        try? FileManager.default.removeItem(atPath: socketPath)
+        try await runtime.stopSystem()
+    }
+
     /// Clears a wedged apiserver (PID without an active Mach endpoint) then starts it.
     private func recoverAPIServer() async throws {
         await LaunchControl.unload(label: ContainerRuntime.apiserverJob)

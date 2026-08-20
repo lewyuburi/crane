@@ -23,8 +23,7 @@ public struct RootView: View {
         }
         .task { if !model.previewLocked { await model.refresh() } }
         .task {
-            // The event feed lives as long as the window does: it's what keeps the container
-            // list current without a single poll.
+            // Feed is also started from the menu bar scene; startWatching is idempotent.
             if !model.previewLocked { model.startWatching() }
         }
     }

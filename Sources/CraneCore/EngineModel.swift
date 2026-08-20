@@ -123,6 +123,13 @@ public final class EngineModel {
         }
     }
 
+    /// Stops socktainer and the container apiserver without uninstalling Crane's stack.
+    public func stopEngine() async {
+        await perform { engine, _ in
+            try await engine.stop()
+        }
+    }
+
     /// Subscribes to the daemon's event stream. Held for the app's lifetime: this is what makes
     /// the UI react in milliseconds instead of on a timer.
     public func startWatching() {
