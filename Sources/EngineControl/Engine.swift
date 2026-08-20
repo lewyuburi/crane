@@ -185,19 +185,40 @@ public actor Engine {
         case let .install(component):
             try await installer.install(manifest.artifact(for: component), onProgress: onProgress)
         case .startRuntime:
-            if await LaunchControl.isRunning(label: ContainerRuntime.apiserverJob) {
-                try await LaunchControl.restart(label: ContainerRuntime.apiserverJob)
-            } else {
-                try await runtime.startSystem()
-            }
+            try await recoverAPIServer()
         case .startDaemon:
+            // socktainer will not bind `container.sock` until the apiserver's Mach service
+            // has checked in. Restarting only the daemon is a no-op when XPC is wedged.
+            try await recoverAPIServer()
             if await LaunchControl.isRunning(label: Self.daemonAgentLabel) {
                 try await LaunchControl.restart(label: Self.daemonAgentLabel)
             } else {
                 try await installAgents()
             }
+            await waitForSocket()
         case .installContext:
             try context.install()
+        }
+    }
+
+    /// Clears a wedged apiserver (PID without an active Mach endpoint) then starts it.
+    private func recoverAPIServer() async throws {
+        await LaunchControl.unload(label: ContainerRuntime.apiserverJob)
+        try await runtime.startSystem()
+        for plugin in ["com.apple.container.container-core-images",
+                       "com.apple.container.machine-apiserver"] {
+            _ = try? await ProcessRunner.run("/bin/launchctl",
+                                             ["kickstart", "-k", "\(LaunchControl.domain)/\(plugin)"],
+                                             timeout: .seconds(8))
+        }
+    }
+
+    /// socktainer binds the socket after XPC housekeeping; give it a moment before the UI re-checks.
+    private func waitForSocket() async {
+        let deadline = ContinuousClock.now + Duration.seconds(12)
+        while ContinuousClock.now < deadline {
+            if FileManager.default.fileExists(atPath: socketPath) { return }
+            try? await Task.sleep(for: .milliseconds(250))
         }
     }
 

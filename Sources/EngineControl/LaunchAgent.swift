@@ -97,6 +97,12 @@ public enum LaunchControl {
             throw EngineError.launchd("Couldn't restart \(label): \(result.err.isEmpty ? result.out : result.err)")
         }
     }
+
+    /// Unloads the job without deleting its plist. Used to clear a wedged apiserver before `system start`.
+    public static func unload(label: String) async {
+        _ = try? await ProcessRunner.run(launchctl, ["bootout", "\(domain)/\(label)"],
+                                         timeout: .seconds(8))
+    }
 }
 
 /// Pure parsing of `launchctl print` output.
@@ -104,5 +110,11 @@ public enum JobState {
     /// launchd prints `pid = 1234` only while the job is actually running.
     public static func hasPID(in output: String) -> Bool {
         output.range(of: #"(?m)^\s*pid\s*=\s*\d+"#, options: .regularExpression) != nil
+    }
+
+    /// The Mach endpoint's `active` count. 0 means the process exists but hasn't checked in,
+    /// which is what leaves socktainer waiting forever for `container.sock`.
+    public static func hasActiveEndpoint(in output: String) -> Bool {
+        output.range(of: #"(?m)^\s*active\s*=\s*[1-9]"#, options: .regularExpression) != nil
     }
 }

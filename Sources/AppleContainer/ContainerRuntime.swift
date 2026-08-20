@@ -27,8 +27,20 @@ public struct ContainerRuntime: Sendable {
         return result.out
     }
 
-    /// Whether launchd currently has a PID for the apiserver.
+    /// Whether the apiserver is up enough for XPC clients. A PID with `active = 0` is a wedged
+    /// Mach service: `container system status` and socktainer hang instead of binding the socket.
     public func isSystemRunning() async -> Bool {
+        let domain = "gui/\(getuid())"
+        guard let result = try? await ProcessRunner.run(
+            "/bin/launchctl", ["print", "\(domain)/\(Self.apiserverJob)"],
+            timeout: .seconds(3)
+        ), result.succeeded else { return false }
+        return result.out.range(of: #"(?m)^\s*pid\s*=\s*\d+"#, options: .regularExpression) != nil
+            && result.out.range(of: #"(?m)^\s*active\s*=\s*[1-9]"#, options: .regularExpression) != nil
+    }
+
+    /// Whether launchd currently has a PID for the apiserver, even if XPC hasn't checked in.
+    private func hasPID() async -> Bool {
         let domain = "gui/\(getuid())"
         guard let result = try? await ProcessRunner.run(
             "/bin/launchctl", ["print", "\(domain)/\(Self.apiserverJob)"],
@@ -39,10 +51,15 @@ public struct ContainerRuntime: Sendable {
 
     /// Starts the apiserver, installing the default kernel on first run.
     ///
-    /// Idempotent by design: when the service is already up this is a no-op, which is what lets
-    /// it double as the login-time launch agent.
+    /// Idempotent when the Mach service is actually serving. A wedged PID (process up, XPC
+    /// dead) is unloaded first so `system start` can register a fresh job instead of hanging.
     public func startSystem() async throws {
         if await isSystemRunning() { return }
+        if await hasPID() {
+            _ = try? await ProcessRunner.run(
+                "/bin/launchctl", ["bootout", "gui/\(getuid())/\(Self.apiserverJob)"],
+                timeout: .seconds(8))
+        }
         try await ProcessRunner.check(executable, ["system", "start", "--enable-kernel-install"],
                                      timeout: .seconds(60))
     }

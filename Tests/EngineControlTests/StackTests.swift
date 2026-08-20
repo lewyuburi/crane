@@ -124,6 +124,25 @@ struct LaunchAgentTests {
         #expect(!JobState.hasPID(in: "state = not running\n\tlast exit code = 0"))
         #expect(!JobState.hasPID(in: "Could not find service in domain"))
     }
+
+    @Test("A pid without an active Mach endpoint is a wedged apiserver")
+    func readsActiveEndpoint() {
+        let wedged = """
+        state = running
+        	pid = 4211
+        	endpoints = {
+        		"com.apple.container.apiserver" = {
+        			port = 0x1
+        			active = 0
+        		}
+        	}
+        """
+        #expect(JobState.hasPID(in: wedged))
+        #expect(!JobState.hasActiveEndpoint(in: wedged))
+        #expect(JobState.hasActiveEndpoint(in: wedged.replacingOccurrences(of: "active = 0", with: "active = 1")))
+        #expect(!JobState.hasActiveEndpoint(in: "active count = 1\nstate = active"),
+                "coalition 'active count' must not count as the Mach endpoint")
+    }
 }
 
 @Suite("Docker context")
